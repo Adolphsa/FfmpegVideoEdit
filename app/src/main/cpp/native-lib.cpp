@@ -17,6 +17,8 @@ extern "C"
 #include "Merge.h"
 #include "FilterVideoScale.h"
 
+Merge mergeObj;
+
 std::string jstring2string(JNIEnv *env, jstring jStr) {
     const char *cstr = env->GetStringUTFChars(jStr, nullptr);
     std::string str = std::string(cstr);
@@ -71,9 +73,15 @@ Java_com_lc_fve_FFmpegNative_doJpgToVideo(JNIEnv *env, jobject thiz, jstring src
 
 extern "C"
 JNIEXPORT void JNICALL
+Java_com_lc_fve_FFmpegNative_setEncodeParams(JNIEnv *env, jobject thiz, jint width, jint height,
+                                             jint video_bitrate, jint fps) {
+    mergeObj.setEncodeParam(width, height, video_bitrate, fps);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
 Java_com_lc_fve_FFmpegNative_mergeFiles(JNIEnv *env, jobject thiz, jobjectArray src_path_list,
-                                        jstring dst, jint width, jint height, jint video_bitrate,
-                                        jint fps, jint is_set_encoder_param) {
+                                        jstring dst) {
     vector<string> srcPathVector = vector<string>();
     jsize size = env->GetArrayLength(src_path_list);
     for (int i = 0; i < size; i++) {
@@ -83,9 +91,6 @@ Java_com_lc_fve_FFmpegNative_mergeFiles(JNIEnv *env, jobject thiz, jobjectArray 
         srcPathVector.push_back(tmpStr);
     }
     string dstPath = jstring2string(env, dst);
-
-    Merge mergeObj;
-    mergeObj.setEncodeParam(is_set_encoder_param, width, height, video_bitrate, fps);
     mergeObj.mergeFiles(srcPathVector, dstPath);
 }
 
@@ -98,10 +103,17 @@ Java_com_lc_fve_FFmpegNative_addMusic(JNIEnv *env, jobject thiz, jstring video_s
     string dpath = jstring2string(env, dst_path);
     string start = jstring2string(env, start_time);
 
-    Merge mObj;
-    mObj.addMusic(vPath, aPath, dpath, start);
+    mergeObj.addMusic(vPath, aPath, dpath, start);
 }
 
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_lc_fve_FFmpegNative_deleteAudio(JNIEnv *env, jobject thiz, jstring video_src,
+                                         jstring video_dst) {
+    string srcPath = jstring2string(env, video_src);
+    string dstPath = jstring2string(env, video_dst);
+    mergeObj.deleteAudio(srcPath, dstPath);
+}
 
 extern "C"
 JNIEXPORT void JNICALL
@@ -111,5 +123,6 @@ Java_com_lc_fve_FFmpegNative_doVideoScale(JNIEnv *env, jobject thiz, jstring src
     string dstPath = jstring2string(env, dst);
 
     FilterVideoScale filterVideoScale;
-    filterVideoScale.doVideoScale(srcPath, dstPath);
+    filterVideoScale.doVideoScale(srcPath, dstPath, 0, 0);
 }
+

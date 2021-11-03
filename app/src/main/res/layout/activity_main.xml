@@ -62,7 +62,14 @@
         app:layout_constraintLeft_toLeftOf="@+id/startAddMusic"
         />
 
-
+    <Button
+        android:id="@+id/deleteAudio"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="删除音频"
+        app:layout_constraintTop_toBottomOf="@+id/startScaleVideo"
+        app:layout_constraintLeft_toLeftOf="@+id/startScaleVideo"
+        />
 
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -39,6 +39,7 @@ public class MainActivity extends AppCompatActivity {
     File mergeVideo;
     File addMusicFile;
     File scaleResultFile;
+    File noAudioResultFile;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,6 +60,7 @@ public class MainActivity extends AppCompatActivity {
         mergeVideo = new File(resourceVideoDir, "merge_result.mp4");
         addMusicFile = new File(resourceVideoDir, "add_result_music.mp4");
         scaleResultFile = new File(resourceVideoDir, "result_scale.mp4");
+        noAudioResultFile = new File(resourceVideoDir, "no_audio.mp4");
 
         FFmpegNative fmpegNative = new FFmpegNative();
 
@@ -93,11 +95,12 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void run() {
 //                        String srcPath1 = resourceVideoDir + File.separator + "jpg_result.mp4";
-                        String srcPath1 = resourceVideoDir + File.separator + "test_1280x720_2.mp4";
-                        String srcPath2 = resourceVideoDir + File.separator + "VID_20211028_111908.mp4";
+//                        String srcPath1 = resourceVideoDir + File.separator + "test_1280x720_2.mp4";
+                        String srcPath1 = resourceVideoDir + File.separator + "VID_20211028_111908.mp4";
+                        String srcPath2 = resourceVideoDir + File.separator + "VID_20211101_174852.mp4";
 
                         String[] stringArr = {srcPath1, srcPath2};
-                        fmpegNative.mergeFiles(stringArr, mergeVideo.getAbsolutePath(), 0, 0, 0, 0, 0);
+                        fmpegNative.mergeFiles(stringArr, mergeVideo.getAbsolutePath());
                     }
                 }).start();
 
@@ -110,7 +113,7 @@ public class MainActivity extends AppCompatActivity {
                 new Thread(new Runnable() {
                     @Override
                     public void run() {
-                        String videoSrcPath = resourceVideoDir + File.separator + "test_1280x720_4.mp4";
+                        String videoSrcPath = resourceVideoDir + File.separator + "no_audio.mp4";
 //                        String audioSrcPath = resourceVideoDir + File.separator + "test_441_f32le_2.aac";
                         String audioSrcPath = resourceVideoDir + File.separator + "name_20211029-162031.mp4";
 
@@ -134,6 +137,20 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }).start();
 
+            }
+        });
+
+        binding.deleteAudio.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        String srcPath = resourceVideoDir + File.separator + "test_1280x720_2.mp4";
+
+                        fmpegNative.deleteAudio(srcPath, noAudioResultFile.getAbsolutePath());
+                    }
+                }).start();
             }
         });
 

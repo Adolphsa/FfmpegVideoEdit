@@ -15,6 +15,7 @@ project("fve")
 # Gradle automatically packages shared libraries with your APK.
 
 set(FFMPEG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/main/cpp/3rdparty/libFFmpeg)
+set(LIBYUV_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/main/cpp/3rdparty/libyuv)
 set(CPPDIR ${CMAKE_CURRENT_SOURCE_DIR}/src/main/cpp)
 
 #ffmpeg头文件
@@ -23,13 +24,18 @@ link_directories(${FFMPEG_DIR}/${ANDROID_ABI}/lib)
 set(FFMPEG_LIB avformat avcodec avfilter avutil swresample swscale fdk-aac x264 z c m dl)
 #SET(FFMPEG_LIB avformat avcodec avdevice avfilter avutil swresample swscale fdk-aac x264 z c m dl)
 
+#libyuv
+include_directories(${LIBYUV_DIR}/${ANDROID_ABI}/include)
+link_directories(${LIBYUV_DIR}/${ANDROID_ABI}/lib)
+set(LIBYUV_LIB yuv)
 
 set(ANDROID_SYSLIBS android log GLESv3 OpenSLES)
 
 set(LIB_SRC ${CPPDIR}/native-lib.cpp
         ${CPPDIR}/JpgVideo.cpp
         ${CPPDIR}/Merge.cpp
-        ${CPPDIR}/FilterVideoScale.cpp)
+        ${CPPDIR}/FilterVideoScale.cpp
+        ${CPPDIR}/YuvUtils.cpp)
 
 add_library( # Sets the name of the library.
         fve
@@ -44,4 +50,5 @@ add_library( # Sets the name of the library.
 target_link_libraries(fve
         ${ANDROID_SYSLIBS}
         ${FFMPEG_LIB}
+        ${LIBYUV_LIB}
         )

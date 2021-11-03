@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <string>
+#include "CommonUtils.h"
 
 using namespace std;
 
@@ -30,7 +31,7 @@ public:
     /** 功能：利用滤镜实现对视频的压缩和翻转
      *  1、只是对视频进行处理，故目标文件的格式和源文件保持一致
      */
-    void doVideoScale(string srcpath, string dstpath);
+    void doVideoScale(string srcpath, string dstpath, int dstWidth, int dstHeight);
 
 private:
     AVCodecContext *en_ctx;
@@ -54,7 +55,7 @@ private:
     void internalrelease();
 
     // 初始化视频滤镜
-    bool init_vidoo_filter_graph();
+    bool init_video_filter_graph(int angle);
 
     void doVideoDecodec(AVPacket *pkt);
 

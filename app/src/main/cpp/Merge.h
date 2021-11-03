@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 #include <limits.h>
+#include <sys/time.h>
+#include <fstream>
 
 using namespace std;
 
@@ -45,37 +47,39 @@ public:
 
     /**
      * 设置视频编码参数
-     * @param isSetParam 是否设置
      * @param width
      * @param height
      * @param videoBitrate
      * @param fps
      */
-    void setEncodeParam(int isSetParam, int width, int height, int videoBitrate, int fps);
+    void setEncodeParam(int width, int height, int videoBitrate, int fps);
 
     /** 实现给任意一个无声的视频文件添加背景音乐的功能；为了简化处理，假设要加入的音频编码方式被视频容器格式支持。要求：
      *  1、声音可以在视频时间轴上的任意位置开始
      *  2、以视频时间轴为参考，若音频时间最终超过则截断
      *  目的：合并后的文件能正确播放视频以及音频
      */
-    void addMusic(string videoPath, string audioPath, string dstPath, string startTime);
+    void addMusic(const string& videoPath, const string& audioPath, const string& dstPath, const string& startTime);
+
+    /**
+     * 删除视频原声
+     * @param videoSrcPath
+     * @param videoDstPath
+     */
+    void deleteAudio(string videoSrcPath, string videoDstPath);
 
 private:
 
     //encoder param
-    int isSetParams;
     int encoderWidth;
     int encoderHeight;
     int encoderBitrate;
     int encoderFps;
 
-    AVFilterContext *src_filter_ctx;
-    AVFilterContext *sink_filter_ctx;
-    AVFilterGraph *graph;
+    fstream  preFile;
+    fstream outFile;
 
     string dstpath;
-    AVFilterInOut *inputs;
-    AVFilterInOut *ouputs;
     AVFormatContext *in_fmt1;
     AVFormatContext *in_fmt2;
     AVFormatContext *ou_fmt;
@@ -140,6 +144,7 @@ index.rotate = rt;
     AVFrame *video_de_frame;
     AVFrame *audio_de_frame;
     AVFrame *video_en_frame;
+    AVFrame *yuv_frame;
     AVFrame *audio_en_frame;
     MediaIndex curIndex;
     MediaIndex preIndex;
@@ -160,10 +165,6 @@ index.rotate = rt;
 
     void updateAVFrame();
 
-    // 初始化视频滤镜
-    bool initVideoFilterGraph(AVFormatContext *in_fmt, int dst_w,int dst_h, int rotate);
-
-//    AVFrame* get_audio_frame(enum AVSampleFormat smpfmt,int64_t ch_layout,int sample_rate,int nb_samples);
     void doConvert(AVFrame **dst, AVFrame *src, bool isVideo);
 
     void doEncode(AVFrame *frame, bool isVideo);

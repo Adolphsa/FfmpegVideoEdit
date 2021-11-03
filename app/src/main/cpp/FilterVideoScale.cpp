@@ -4,19 +4,19 @@
 
 #include "FilterVideoScale.h"
 
-FilterVideoScale::FilterVideoScale():en_ctx(NULL),de_ctx(NULL),ou_fmt(NULL),in_fmt(NULL),inputs(NULL),ouputs(NULL),src_filter_ctx(NULL),sink_filter_ctx(NULL)
-        ,graph(NULL),de_frame(NULL),en_frame(NULL),video_in_index(-1),audio_in_index(-1),video_ou_index(-1),audio_ou_index(-1)
-{
+FilterVideoScale::FilterVideoScale() : en_ctx(NULL), de_ctx(NULL), ou_fmt(NULL), in_fmt(NULL),
+                                       inputs(NULL), ouputs(NULL), src_filter_ctx(NULL),
+                                       sink_filter_ctx(NULL), graph(NULL), de_frame(NULL),
+                                       en_frame(NULL), video_in_index(-1), audio_in_index(-1),
+                                       video_ou_index(-1), audio_ou_index(-1) {
     av_register_all();
 }
 
-FilterVideoScale::~FilterVideoScale()
-{
+FilterVideoScale::~FilterVideoScale() {
 
 }
 
-void FilterVideoScale::internalrelease()
-{
+void FilterVideoScale::internalrelease() {
     if (en_ctx) {
         avcodec_free_context(&en_ctx);
     }
@@ -42,10 +42,16 @@ void FilterVideoScale::internalrelease()
     }
 }
 
-void FilterVideoScale::doVideoScale(string srcpath,string dstpath)
-{
+void FilterVideoScale::doVideoScale(string srcpath, string dstpath, int dstWidth, int dstHeight) {
     dst_width = 720;
     dst_height = 1280;
+    if (dstWidth != 0) {
+        dst_width = dstWidth;
+    }
+    if (dstHeight != 0) {
+        dst_height = dst_height;
+    }
+
 
     // 打开源文件
     if (avformat_open_input(&in_fmt, srcpath.c_str(), NULL, NULL) < 0) {
@@ -59,7 +65,8 @@ void FilterVideoScale::doVideoScale(string srcpath,string dstpath)
     }
     AVCodec *de_codec = NULL;
     // 查找视频流索引，同时返回对应的解码器赋值给de_codec
-    if ((video_in_index = av_find_best_stream(in_fmt, AVMEDIA_TYPE_VIDEO, -1, -1, &de_codec, 0)) < 0) {
+    if ((video_in_index = av_find_best_stream(in_fmt, AVMEDIA_TYPE_VIDEO, -1, -1, &de_codec, 0)) <
+        0) {
         LOGD("av_find_best_stream fail");
         internalrelease();
         return;
@@ -113,7 +120,7 @@ void FilterVideoScale::doVideoScale(string srcpath,string dstpath)
 
 //    AVDictionaryEntry *pEntry = av_dict_get(in_fmt->streams[video_in_index]->metadata, "rotate", 0,
 //                                            0);
-    
+
     // 设置编码参数
     en_ctx->width = dst_width;
     en_ctx->height = dst_height;
@@ -149,7 +156,9 @@ void FilterVideoScale::doVideoScale(string srcpath,string dstpath)
         return;
     }
 
-    if (!init_vidoo_filter_graph()) {
+    int rotateAngle = getRotateAngle(in_fmt->streams[video_in_index]);
+
+    if (!init_video_filter_graph(rotateAngle)) {
         internalrelease();
         return;
     }
@@ -159,7 +168,7 @@ void FilterVideoScale::doVideoScale(string srcpath,string dstpath)
     while (av_read_frame(in_fmt, in_pkt) == 0) {
         if (in_pkt->stream_index == video_in_index) {   // 视频数据
             doVideoDecodec(in_pkt);
-        } else if(in_pkt->stream_index == audio_in_index){  //音频数据
+        } else if (in_pkt->stream_index == audio_in_index) {  //音频数据
             // 由于源和目标文件可能使用了不同的时间基，故这里需要进行转换
             AVStream *in_stream = in_fmt->streams[audio_in_index];
             AVStream *ou_stream = ou_fmt->streams[audio_ou_index];
@@ -168,7 +177,8 @@ void FilterVideoScale::doVideoScale(string srcpath,string dstpath)
             in_pkt->stream_index = audio_ou_index;
 
             // 写入音频数据
-            LOGD("audio pts %d(%s)",in_pkt->pts,av_ts2timestr(in_pkt->pts,&ou_stream->time_base));
+            LOGD("audio pts %ld(%s)", in_pkt->pts,
+                 av_ts2timestr(in_pkt->pts, &ou_stream->time_base));
             if (av_write_frame(ou_fmt, in_pkt) < 0) {
                 LOGD("audio write fail");
                 internalrelease();
@@ -188,8 +198,7 @@ void FilterVideoScale::doVideoScale(string srcpath,string dstpath)
 
 }
 
-bool FilterVideoScale::init_vidoo_filter_graph()
-{
+bool FilterVideoScale::init_video_filter_graph(int angle) {
     graph = avfilter_graph_alloc();
     if (!graph) {
         LOGD("avfilter_graph_alloc() fail");
@@ -217,10 +226,12 @@ bool FilterVideoScale::init_vidoo_filter_graph()
      */
     char src_args[200] = {0};
     AVStream *video_in_stream = in_fmt->streams[video_in_index];
-    snprintf(src_args, sizeof(src_args), "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d",de_ctx->width,de_ctx->height,de_ctx->pix_fmt
-            ,video_in_stream->time_base.num,video_in_stream->time_base.den);
+    snprintf(src_args, sizeof(src_args), "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d",
+             de_ctx->width, de_ctx->height, de_ctx->pix_fmt, video_in_stream->time_base.num,
+             video_in_stream->time_base.den);
     // 创建输入滤镜上下文;该上下文用来对滤镜进行参数设置，初始化，连接其它滤镜等等
-    int ret = avfilter_graph_create_filter(&src_filter_ctx, src_filter, "in", src_args, NULL, graph);
+    int ret = avfilter_graph_create_filter(&src_filter_ctx, src_filter, "in", src_args, NULL,
+                                           graph);
     if (ret < 0) {
         LOGD("avfilter_graph_create_filter() fail");
         internalrelease();
@@ -277,7 +288,17 @@ bool FilterVideoScale::init_vidoo_filter_graph()
      *  则要将宽高参数调换
      */
     char filter_desc[200] = {0};
-    snprintf(filter_desc, sizeof(filter_desc), "scale=%d:%d,transpose=1",dst_height,dst_width);
+    if (angle == 90) {
+        snprintf(filter_desc, sizeof(filter_desc), "scale=%d:%d,transpose=1", dst_height,
+                 dst_width);
+    } else if (angle == 270) {
+        snprintf(filter_desc, sizeof(filter_desc), "scale=%d:%d,transpose=2", dst_height,
+                 dst_width);
+    } else {
+        snprintf(filter_desc, sizeof(filter_desc), "scale=%d:%d", dst_width, dst_height);
+    }
+
+
     ret = avfilter_graph_parse_ptr(graph, filter_desc, &inputs, &ouputs, NULL);
     if (ret < 0) {
         LOGD("avfilter_graph_parse_ptr fail");
@@ -295,8 +316,7 @@ bool FilterVideoScale::init_vidoo_filter_graph()
     return true;
 }
 
-void FilterVideoScale::doVideoDecodec(AVPacket *pkt)
-{
+void FilterVideoScale::doVideoDecodec(AVPacket *pkt) {
     avcodec_send_packet(de_ctx, pkt);
     if (!de_frame) {
         de_frame = av_frame_alloc();
@@ -306,7 +326,7 @@ void FilterVideoScale::doVideoDecodec(AVPacket *pkt)
         if (ret == AVERROR_EOF) {
             doVideoEncode(NULL);
             break;
-        } else if(ret < 0) {
+        } else if (ret < 0) {
             break;
         }
         de_frame->pts = de_frame->best_effort_timestamp;
@@ -343,8 +363,7 @@ void FilterVideoScale::doVideoDecodec(AVPacket *pkt)
     }
 }
 
-void FilterVideoScale::doVideoEncode(AVFrame *frame)
-{
+void FilterVideoScale::doVideoEncode(AVFrame *frame) {
     avcodec_send_frame(en_ctx, frame);
     while (true) {
         AVPacket *pkt = av_packet_alloc();
@@ -356,7 +375,8 @@ void FilterVideoScale::doVideoEncode(AVFrame *frame)
 
         // 写入之前转换时间基
         av_packet_rescale_ts(pkt, en_ctx->time_base, ou_fmt->streams[video_ou_index]->time_base);
-        LOGD("video pts %d(%s)",pkt->pts,av_ts2timestr(pkt->pts, &ou_fmt->streams[video_ou_index]->time_base));
+        LOGD("video pts %d(%s)", pkt->pts,
+             av_ts2timestr(pkt->pts, &ou_fmt->streams[video_ou_index]->time_base));
         av_write_frame(ou_fmt, pkt);
         av_packet_unref(pkt);
     }

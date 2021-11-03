@@ -3,6 +3,10 @@
 //
 
 #include "Merge.h"
+#include "CommonUtils.h"
+#include "libyuv.h"
+#include "FilterVideoScale.h"
+
 
 #include <utility>
 
@@ -10,9 +14,8 @@ Merge::Merge() {
     av_register_all();
     avcodec_register_all();
 
-    isSetParams = 0;
-    encoderWidth = 0;
-    encoderHeight = 0;
+    encoderWidth = 720;
+    encoderHeight = 1280;
     encoderBitrate = 512000;
     encoderFps = 25;
 
@@ -34,6 +37,7 @@ Merge::Merge() {
     video_de_frame = NULL;
     audio_de_frame = NULL;
     video_en_frame = NULL;
+    yuv_frame = NULL;
     audio_en_frame = NULL;
     swsctx = NULL;
     swrctx = NULL;
@@ -50,51 +54,54 @@ Merge::~Merge() {
 
 }
 
-/**
- * 获取旋转角度
- * @param avStream
- * @return
- */
-static int getRotateAngle(AVStream *avStream) {
-
-    AVDictionaryEntry *tag = NULL;
-
-    int m_Rotate = -1;
-    tag = av_dict_get(avStream->metadata, "rotate", tag, 0);
-
-    if (tag == NULL) {
-        m_Rotate = 0;
-    } else {
-        int angle = atoi(tag->value);
-        angle %= 360;
-        if (angle == 90) {
-            m_Rotate = 90;
-        } else if (angle == 180) {
-            m_Rotate = 180;
-        } else if (angle == 270) {
-            m_Rotate = 270;
-        } else {
-            m_Rotate = 0;
-        }
+void Merge::setEncodeParam(int width, int height, int videoBitrate, int fps) {
+    //外部设置输出文件的视频编码参数
+    if (width != 0) {
+        encoderWidth = width;
     }
 
-    return m_Rotate;
-}
+    if (height != 0) {
+        encoderHeight = height;
+    }
 
-void Merge::setEncodeParam(int isSetParam, int width, int height, int videoBitrate, int fps) {
-    isSetParams = isSetParam;
-    encoderWidth = width;
-    encoderHeight = height;
-    encoderBitrate = videoBitrate;
-    encoderFps = fps;
+    if (encoderBitrate != 0) {
+        encoderBitrate = videoBitrate;
+    }
+
+    if (encoderFps != 0) {
+        encoderFps = fps;
+    }
 }
 
 //合并非流式容器
 void Merge::mergeFiles(vector<string> srcVector, string dPath1) {
 
+    outFile.open("/storage/emulated/0/Android/data/com.lc.fve/files/Movies/aa_result_test.yuv",
+                 ios::out);
+    preFile.open("/storage/emulated/0/Android/data/com.lc.fve/files/Movies/aa_pre_test.yuv",
+                 ios::out);
+
     dstpath = std::move(dPath1);
 
     srcPaths = std::move(srcVector);
+
+    unsigned long startTime = getTickCount();
+
+//    for (int i = 0; i < srcVector.size(); ++i) {
+//        FilterVideoScale filterVideoScale;
+//        string temp = srcVector.at(i);
+//        string str1 = string(temp, 0, temp.size()-4);
+//        string str2 = string(temp, temp.size()-4, 4);
+//        LOGD("str1 = %s, str2 = %s", str1.c_str(), str2.c_str());
+//
+//        str1.append("_pre");
+//        str1.append(to_string(i));
+//        str1.append(str2);
+//        LOGD("result str1 = %s", str1.c_str());
+//
+//        filterVideoScale.doVideoScale(temp, str1);
+//        srcPaths.push_back(str1);
+//    }
 
     if (!openInputFile()) {
         return;
@@ -104,18 +111,15 @@ void Merge::mergeFiles(vector<string> srcVector, string dPath1) {
         return;
     }
 
-    // 创建AVFrame
-    updateAVFrame();
+
 
     // 开始解码和重新编码
     for (int i = 0; i < in_fmts.size(); i++) {
         AVFormatContext *in_fmt = in_fmts[i];
         curIndex = in_indexes.at(i);
 
-        //init filter
-        if (curIndex.width > curIndex.height) {
-            initVideoFilterGraph(in_fmt, wantIndex.width, wantIndex.height, curIndex.rotate);
-        }
+        // 创建AVFrame
+        updateAVFrame();
 
         // 读取数据
         while (true) {
@@ -137,6 +141,8 @@ void Merge::mergeFiles(vector<string> srcVector, string dPath1) {
         doDecode(NULL, false);
 
         LOGD("finish file %d", i);
+        unsigned long endTime = getTickCount();
+        LOGD("耗时 = %ld", (endTime - startTime) / 1000);
     }
 
     // 写入文件尾部
@@ -149,87 +155,6 @@ void Merge::mergeFiles(vector<string> srcVector, string dPath1) {
     releaseSources();
 }
 
-
-bool Merge::initVideoFilterGraph(AVFormatContext *in_fmt, int dst_w, int dst_h, int rotate) {
-    graph = avfilter_graph_alloc();
-    if (!graph) {
-        LOGD("avfilter_graph_alloc() fail");
-        releaseSources();
-        return false;
-    }
-
-    // 1、创建视频输入滤镜；该滤镜作为滤镜管道的第一个滤镜，用于接收要处理的原始视频数据AVFrame
-    const AVFilter *src_filter = avfilter_get_by_name("buffer");
-    char src_args[200] = {0};
-    AVStream *video_in_stream = in_fmt->streams[curIndex.video_index];
-    snprintf(src_args, sizeof(src_args), "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d",
-             curIndex.width, curIndex.height, curIndex.pix_fmt, video_in_stream->time_base.num,
-             video_in_stream->time_base.den);
-    // 创建输入滤镜上下文;该上下文用来对滤镜进行参数设置，初始化，连接其它滤镜等等
-    int ret = avfilter_graph_create_filter(&src_filter_ctx, src_filter, "in", src_args, NULL,
-                                           graph);
-    if (ret < 0) {
-        LOGD("avfilter_graph_create_filter() fail");
-        releaseSources();
-        return false;
-    }
-
-    // 2、创建滤镜输出滤镜，该滤镜作为滤镜管道的最后一个滤镜，用于输出滤镜处理过的视频数据AVFrame
-    const AVFilter *sink_filter = avfilter_get_by_name("buffersink");
-    if (!sink_filter) {
-        LOGD("abuffersink get fail()");
-        releaseSources();
-        return false;
-    }
-    // 输出滤镜是不需要参数的
-    ret = avfilter_graph_create_filter(&sink_filter_ctx, sink_filter, "ou", NULL, NULL, graph);
-    if (ret < 0) {
-        LOGD("sink filter ctx create fail()");
-        releaseSources();
-        return false;
-    }
-
-    // 3、创建滤镜输入节点，输出节点并对应上输入输出滤镜。这两个节点和通过滤镜描述符创建的滤镜链最终连接成整个完整的滤镜处理链
-    inputs = avfilter_inout_alloc();
-    ouputs = avfilter_inout_alloc();
-    // inputs节点连接着通过滤镜描述符创建的滤镜链的最后一个滤镜的输出端口，所以它的name设置为"out"
-    inputs->name = av_strdup("out");
-    inputs->filter_ctx = sink_filter_ctx;
-    inputs->pad_idx = 0;
-    inputs->next = NULL;
-
-    // ouputs节点连接着通过滤镜描述符创建的滤镜链的第一个滤镜的输入端口，所以它的name设置为"in"
-    ouputs->name = av_strdup("in");
-    ouputs->filter_ctx = src_filter_ctx;
-    ouputs->pad_idx = 0;
-    ouputs->next = NULL;
-
-    /** 4、定义滤镜描述符字符串，然后通过滤镜描述符以及前面定义的inputs，ouputs节点创建一个完整的滤镜处理链
-     *  滤镜描述符的格式：
-     *  滤镜名1=滤镜参数名1=滤镜参数值1:滤镜参数名2=滤镜参数值2:.....,滤镜名2=滤镜参数名2=滤镜参数值1:滤镜参数名2=滤镜参数值2:.....,
-     */
-    char filter_desc[200] = {0};
-    if (rotate == 90 || rotate == 270) {
-        snprintf(filter_desc, sizeof(filter_desc), "scale=%d:%d,transpose=1", dst_h,
-                 dst_w);
-    }
-
-    ret = avfilter_graph_parse_ptr(graph, filter_desc, &inputs, &ouputs, NULL);
-    if (ret < 0) {
-        LOGD("avfilter_graph_parse_ptr fail");
-        releaseSources();
-        return false;
-    }
-
-    // 5、初始化滤镜管道
-    if (avfilter_graph_config(graph, NULL) < 0) {
-        LOGD("avfilter_graph_config fail");
-        releaseSources();
-        return false;
-    }
-
-    return true;
-}
 
 bool Merge::openInputFile() {
     MediaIndexCmd(wantIndex, 0, -1, -1, INT_MAX, INT_MAX, 0, AV_PIX_FMT_NONE, AV_SAMPLE_FMT_NONE, 0,
@@ -307,14 +232,6 @@ bool Merge::openInputFile() {
 //                    wantIndex.video_bit_rate = stream->codecpar->bit_rate;
                     wantIndex.video_bit_rate = 512000;
                     wantIndex.fps = 25;
-
-                    //外部设置输出文件的视频编码参数
-                    if (isSetParams) {
-                        wantIndex.width = encoderWidth;
-                        wantIndex.height = encoderHeight;
-                        wantIndex.video_bit_rate = encoderBitrate;
-                        wantIndex.fps = encoderFps;
-                    }
 
                     LOGD("wantIndex.width = %d, wantIndex.height = %d, wantIndex.video_codecId = %d, wantIndex.pix_fmt = %d, wantIndex.video_bit_rate = %ld, wantIndex.fps = %d",
                          wantIndex.width, wantIndex.height, wantIndex.video_codecId,
@@ -409,9 +326,9 @@ bool Merge::addStream() {
         }
         // 设置编码参数
         ctx->pix_fmt = wantIndex.pix_fmt;
-        ctx->width = wantIndex.width;
-        ctx->height = wantIndex.height;
-        ctx->bit_rate = wantIndex.video_bit_rate;
+        ctx->width = encoderWidth;
+        ctx->height = encoderHeight;
+        ctx->bit_rate = encoderBitrate;
         ctx->time_base = (AVRational) {1, wantIndex.fps * 100};
         ctx->framerate = (AVRational) {wantIndex.fps, 1};
         stream->time_base = ctx->time_base;
@@ -436,6 +353,7 @@ bool Merge::addStream() {
             return false;
         }
 
+        LOGD("ctx->width = %d, ctx->height = %d", ctx->width, ctx->height);
         video_en_ctx = ctx;
     }
 
@@ -502,17 +420,33 @@ void Merge::updateAVFrame() {
     if (video_en_frame) {
         av_frame_unref(video_en_frame);
     }
+    if (yuv_frame) {
+        av_frame_unref(yuv_frame);
+    }
     if (audio_en_frame) {
         av_frame_unref(audio_en_frame);
     }
     if (video_en_ctx) {
         video_en_frame = av_frame_alloc();
+        yuv_frame = av_frame_alloc();
         video_de_frame = av_frame_alloc();
         video_en_frame->format = video_en_ctx->pix_fmt;
-        video_en_frame->width = video_en_ctx->width;
-        video_en_frame->height = video_en_ctx->height;
+        video_en_frame->width = curIndex.width;
+        video_en_frame->height = curIndex.height;
         av_frame_get_buffer(video_en_frame, 0);
         av_frame_make_writable(video_en_frame);
+
+        yuv_frame->format = video_en_ctx->pix_fmt;
+        if (curIndex.rotate != 0) {
+            yuv_frame->width = curIndex.height;
+            yuv_frame->height = curIndex.width;
+        } else {
+            yuv_frame->width = curIndex.width;
+            yuv_frame->height = curIndex.height;
+        }
+
+        av_frame_get_buffer(yuv_frame, 0);
+        av_frame_make_writable(yuv_frame);
     }
 
     if (audio_en_ctx) {
@@ -568,6 +502,8 @@ void Merge::doDecode(AVPacket *pkt, bool isVideo) {
 
 void Merge::doConvert(AVFrame **dst, AVFrame *src, bool isVideo) {
     int ret = 0;
+    LOGD("(*dst)->width1 = %d, src->width1 = %d", (*dst)->width, src->width);
+    LOGD("(*dst)->format = %d, src->format = %d", (*dst)->format, src->format);
     //handle video
     if (isVideo && (src->width != (*dst)->width || src->format != (*dst)->format)) {
         MediaIndex index = in_indexes[curIndex.file_index];
@@ -575,35 +511,13 @@ void Merge::doConvert(AVFrame **dst, AVFrame *src, bool isVideo) {
         LOGD("index.width = %d, index.height = %d, index.pix_fmt = %d, index.rotate = %d",
              index.width, index.height,
              index.pix_fmt, index.rotate);
-        LOGD("video_en_ctx.width = %d, video_en_ctx = %d, video_en_ctx = %d", video_en_ctx->width,
+        LOGD("video_en_ctx.width = %d, video_en_ctx height = %d, video_en_ctx pix_fmt = %d",
+             video_en_ctx->width,
              video_en_ctx->height, video_en_ctx->pix_fmt);
-
-        if (index.width > index.height) {
-            // 取得了解码数据;送入滤镜管道进行处理
-            ret = av_buffersrc_add_frame_flags(src_filter_ctx, src, AV_BUFFERSRC_FLAG_KEEP_REF);
-            if (ret < 0) {
-                LOGD("av_buffersrc_add_frame_flags fail");
-            }
-        }
-
-        while (true) {
-            ret = av_buffersink_get_frame(sink_filter_ctx, en_frame);
-            if (ret < 0) {
-                break;
-            }
-
-            // 取得了数据
-            doVideoEncode(en_frame);
-            /** 必须释放，不然会造成内存泄露
-             *  av_buffersink_get_frame()函数就跟avcodec_receive_frame()函数一样，不需提前为AVFrame分配内存，每次调用它内部都会
-             *  重新分配新的AVFrame的内存，所以使用完毕后必须手动释放这个AVFrame的内存
-             */
-            av_frame_unref(en_frame);
-        }
 
         if (!swsctx) {
             swsctx = sws_getContext(index.width, index.height, index.pix_fmt,
-                                    video_en_ctx->width, video_en_ctx->height,
+                                    index.width, index.height,
                                     video_en_ctx->pix_fmt,
                                     SWS_FAST_BILINEAR, NULL, NULL, NULL);
             if (swsctx == NULL) {
@@ -620,23 +534,141 @@ void Merge::doConvert(AVFrame **dst, AVFrame *src, bool isVideo) {
             return;
         }
 
+        LOGD("(*dst)->width = %d, (*dst)->height = %d", (*dst)->width, (*dst)->height);
 
 
+//        uint8 *i420_scale_data = (uint8 *)malloc(sizeof(uint8) * (*dst)->width * (*dst)->height * 3 / 2);
+//        rotateI420((*dst)->data[0], (*dst)->width, (*dst)->height, i420_scale_data, curIndex.rotate);
+//        scaleI420((*dst)->data[0], (*dst)->width, (*dst)->height, i420_scale_data, 1280, 720, 0);
+//        (*dst)->data[0] = i420_scale_data;
+
+//        preFile << (*dst)->data[0];
+//        preFile << (*dst)->data[1];
+//        preFile << (*dst)->data[2];
+
+        if (curIndex.rotate == 90 || curIndex.rotate == 270) {
+            int whSize = (*dst)->width * (*dst)->height;
+            int uv_stride = (*dst)->width / 2;
+            int uv_length = uv_stride * (*dst)->height / 2;
+            uint8_t *yuvBuffer = (uint8_t *) malloc(whSize * 3 / 2);
+            LOGD("sizeof(yuvBuffer) = %lu", sizeof(yuvBuffer) * whSize * 3 / 2);
+            memset(yuvBuffer, 0, whSize * 3 / 2);
+            uint8_t *Y_data_Dst = yuvBuffer;
+            uint8_t *U_data_Dst = yuvBuffer + whSize;
+            uint8_t *V_data_Dst = U_data_Dst + uv_length;
+
+            libyuv::I420Rotate((*dst)->data[0], (*dst)->linesize[0],
+                               (*dst)->data[1], (*dst)->linesize[1],
+                               (*dst)->data[2], (*dst)->linesize[2],
+                               Y_data_Dst, (*dst)->height,
+                               U_data_Dst, (*dst)->height >> 1,
+                               V_data_Dst, (*dst)->height >> 1,
+                               (*dst)->width, (*dst)->height,
+                               (libyuv::RotationMode) curIndex.rotate);
+
+            yuv_frame->data[0] = Y_data_Dst;
+            yuv_frame->data[1] = U_data_Dst;
+            yuv_frame->data[2] = V_data_Dst;
+
+            //写文件
+//        outFile<< yuvBuffer;
+
+            LOGD("(*dst)->width2 = %d, (*dst)->height2 = %d", (*dst)->width, (*dst)->height);
+            LOGD("(*dst)->linesize[0] = %d, (*dst)->linesize[1] = %d, (*dst)->linesize[2] = %d",
+                 (*dst)->linesize[0], (*dst)->linesize[1], (*dst)->linesize[2]);
+            yuv_frame->linesize[0] = (*dst)->height;
+            yuv_frame->linesize[1] = (*dst)->height / 2;
+            yuv_frame->linesize[2] = (*dst)->height / 2;
+
+        } else {
+            yuv_frame->data[0] = (*dst)->data[0];
+            yuv_frame->data[1] = (*dst)->data[1];
+            yuv_frame->data[2] = (*dst)->data[2];
+
+            yuv_frame->linesize[0] = (*dst)->width;
+            yuv_frame->linesize[1] = (*dst)->width / 2;
+            yuv_frame->linesize[2] = (*dst)->width / 2;
+        }
+
+        int scaleW = encoderWidth;
+        int scaleH = encoderHeight;
+        int y_size = scaleW * scaleH;
+        int u_size = (scaleW >> 1) * (scaleH >> 1);
+        uint8_t *scaleBuffer = (uint8_t *) malloc(y_size * 3 / 2);
+        uint8_t *Y_scale_Dst = scaleBuffer;
+        uint8_t *U_scale_Dst = scaleBuffer + y_size;
+        uint8_t *V_scale_Dst = U_scale_Dst + u_size;
+
+        libyuv::I420Scale(yuv_frame->data[0], yuv_frame->linesize[0],
+                          yuv_frame->data[1], yuv_frame->linesize[1],
+                          yuv_frame->data[2], yuv_frame->linesize[2],
+                          (*dst)->height, (*dst)->width,
+                          Y_scale_Dst, scaleW,
+                          U_scale_Dst, scaleW >> 1,
+                          V_scale_Dst, scaleW >> 1,
+                          scaleW, scaleH, (libyuv::FilterMode) 0);
+
+        yuv_frame->data[0] = Y_scale_Dst;
+        yuv_frame->data[1] = U_scale_Dst;
+        yuv_frame->data[2] = V_scale_Dst;
+
+        LOGD("yuv_frame->linesize[0] = %d, yuv_frame->linesize[1] = %d, yuv_frame->linesize[2] = %d",
+             yuv_frame->linesize[0], yuv_frame->linesize[1], yuv_frame->linesize[2]);
+
+        yuv_frame->linesize[0] = scaleW;
+        yuv_frame->linesize[1] = scaleW >> 1;
+        yuv_frame->linesize[2] = scaleW >> 1;
+
+        LOGD("yuv_frame->linesize[0] = %d, yuv_frame->linesize[1] = %d, yuv_frame->->linesize[2] = %d",
+             yuv_frame->linesize[0], yuv_frame->linesize[1], yuv_frame->linesize[2]);
+        LOGD("(*dst)->width3 = %d, (*dst)->height3 = %d", (*dst)->width, (*dst)->height);
 
 
         /** 遇到问题：合成后的视频时长不是各个视频文件视频时长之和
          *  分析原因：因为每个视频文件的fps不一样，合并时pts没有和每个视频文件的fps对应
          *  解决方案：合并时pts要和每个视频文件的fps对应
          */
-        (*dst)->pts = next_video_pts + video_en_ctx->time_base.den / curIndex.fps;
+        yuv_frame->pts = next_video_pts + video_en_ctx->time_base.den / curIndex.fps;
         next_video_pts += video_en_ctx->time_base.den / curIndex.fps;
-        doEncode((*dst), (*dst)->width > 0);
+        doEncode(yuv_frame, yuv_frame->width > 0);
 
     } else if (isVideo && (src->width == (*dst)->width && src->format == (*dst)->format)) {
+        LOGD("直接复制视频流");
         av_frame_copy((*dst), src);
-        (*dst)->pts = next_video_pts + video_en_ctx->time_base.den / curIndex.fps;
+
+        int scaleW = encoderWidth;
+        int scaleH = encoderHeight;
+        int y_size = scaleW * scaleH;
+        int u_size = (scaleW >> 1) * (scaleH >> 1);
+        uint8_t *scaleBuffer = (uint8_t *) malloc(y_size * 3 / 2);
+        uint8_t *Y_scale_Dst = scaleBuffer;
+        uint8_t *U_scale_Dst = scaleBuffer + y_size;
+        uint8_t *V_scale_Dst = U_scale_Dst + u_size;
+
+        libyuv::I420Scale((*dst)->data[0], (*dst)->linesize[0],
+                          (*dst)->data[1], (*dst)->linesize[1],
+                          (*dst)->data[2], (*dst)->linesize[2],
+                          (*dst)->width, (*dst)->height,
+                          Y_scale_Dst, scaleW,
+                          U_scale_Dst, scaleW >> 1,
+                          V_scale_Dst, scaleW >> 1,
+                          scaleW, scaleH, (libyuv::FilterMode) 0);
+
+        yuv_frame->data[0] = Y_scale_Dst;
+        yuv_frame->data[1] = U_scale_Dst;
+        yuv_frame->data[2] = V_scale_Dst;
+
+        LOGD("yuv_frame->linesize[0] = %d, yuv_frame->linesize[1] = %d, yuv_frame->linesize[2] = %d",
+             yuv_frame->linesize[0], yuv_frame->linesize[1], yuv_frame->linesize[2]);
+
+        yuv_frame->linesize[0] = scaleW;
+        yuv_frame->linesize[1] = scaleW >> 1;
+        yuv_frame->linesize[2] = scaleW >> 1;
+
+
+        yuv_frame->pts = next_video_pts + video_en_ctx->time_base.den / curIndex.fps;
         next_video_pts += video_en_ctx->time_base.den / curIndex.fps;
-        doEncode((*dst), (*dst)->width > 0);
+        doEncode(yuv_frame, yuv_frame->width > 0);
     }
 
     //handle audio
@@ -818,7 +850,7 @@ void Merge::doEncode(AVFrame *frame, bool isVideo) {
     }
 }
 
-void Merge::addMusic(string video_path, string audio_path, string dst_path, string start_time) {
+void Merge::addMusic(const string& video_path, const string& audio_path, const string& dst_path, const string& start_time) {
 
     //MP4文件标准封装为h264和aac格式 目前暂不支持mp3音频文件
     string start = start_time;
@@ -981,6 +1013,95 @@ void Merge::addMusic(string video_path, string audio_path, string dst_path, stri
     releaseSources();
 }
 
+void Merge::deleteAudio(string videoSrcPath, string videoDstPath) {
+
+    in_fmt1 = NULL;// 用于解封装视频
+    ou_fmt = NULL;  //用于封装音视频
+
+    int ret = 0;
+    // 打开视频文件
+    if ((ret = avformat_open_input(&in_fmt1, videoSrcPath.c_str(), NULL, NULL)) < 0) {
+        LOGD("deleteAudio avformat_open_input() fail %s", av_err2str(ret));
+        return;
+    }
+    if ((ret = avformat_find_stream_info(in_fmt1, NULL)) < 0) {
+        LOGD("deleteAudio avformat_find_stream_info %s", av_err2str(ret));
+        releaseSources();
+        return;
+    }
+
+    for (int i = 0; i < in_fmt1->nb_streams; i++) {
+        AVStream *stream = in_fmt1->streams[i];
+        if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            video1_in_index = i;
+            break;
+        }
+    }
+
+    // 打开输出文件的封装器
+    if (avformat_alloc_output_context2(&ou_fmt, NULL, NULL, videoDstPath.c_str()) < 0) {
+        LOGD("deleteAudio avformat_alloc_out_context2 ()");
+        releaseSources();
+        return;
+    }
+
+    // 添加视频流并从输入源拷贝视频流编码参数
+    AVStream *stream = avformat_new_stream(ou_fmt, NULL);
+    video_ou_index = stream->index;
+    if (avcodec_parameters_copy(stream->codecpar, in_fmt1->streams[video1_in_index]->codecpar) <
+        0) {
+        releaseSources();
+        return;
+    }
+    // 如果源和目标文件的码流格式不一致，则将目标文件的code_tag赋值为0
+    if (av_codec_get_id(ou_fmt->oformat->codec_tag,
+                        in_fmt1->streams[video1_in_index]->codecpar->codec_tag) !=
+        stream->codecpar->codec_id) {
+        stream->codecpar->codec_tag = 0;
+    }
+
+    // 打开输出上下文
+    if (!(ou_fmt->oformat->flags & AVFMT_NOFILE)) {
+        if (avio_open2(&ou_fmt->pb, videoDstPath.c_str(), AVIO_FLAG_WRITE, NULL, NULL) < 0) {
+            LOGD("deleteAudio avio_open2() fail");
+            releaseSources();
+            return;
+        }
+    }
+
+    // 写入头文件
+    if (avformat_write_header(ou_fmt, NULL) < 0) {
+        LOGD("deleteAudio avformat_write_header()");
+        releaseSources();
+        return;
+    }
+
+    AVPacket *v_pkt = av_packet_alloc();
+    // 写入视频
+    int64_t video_max_pts = 0;
+    while (av_read_frame(in_fmt1, v_pkt) >= 0) {
+        if (v_pkt->stream_index == video1_in_index) {   // 说明是视频
+            // 因为源文件和目的文件时间基可能不一致，所以这里要进行转换
+            av_packet_rescale_ts(v_pkt, in_fmt1->streams[video1_in_index]->time_base,
+                                 ou_fmt->streams[video_ou_index]->time_base);
+            v_pkt->stream_index = video_ou_index;
+            video_max_pts = max(v_pkt->pts, video_max_pts);
+            LOGD("deleteAudio video pts %d(%s)", v_pkt->pts, av_ts2timestr(v_pkt->pts, &stream->time_base));
+            if (av_write_frame(ou_fmt, v_pkt) < 0) {
+                LOGD("1 av_write_frame < 0");
+                releaseSources();
+                return;
+            }
+        }
+    }
+
+    av_write_trailer(ou_fmt);
+    LOGD("写入完毕");
+
+    // 释放资源
+    releaseSources();
+}
+
 void Merge::releaseSources() {
     if (in_fmt1) {
         avformat_close_input(&in_fmt1);
@@ -1044,21 +1165,19 @@ void Merge::releaseSources() {
     if (video_en_frame) {
         av_frame_free(&video_en_frame);
     }
+    if (outFile) {
+        outFile.close();
+    }
+    if (preFile) {
+        preFile.close();
+    }
+    if (yuv_frame) {
+        av_frame_free(&yuv_frame);
+    }
     if (audio_en_frame) {
         av_frame_free(&audio_en_frame);
     }
     if (audio_buffer) {
         av_freep(&audio_buffer[0]);
-    }
-
-    if (inputs) {
-        avfilter_inout_free(&inputs);
-    }
-    if (ouputs) {
-        avfilter_inout_free(&ouputs);
-    }
-    // 滤镜以及滤镜上下文是通过滤镜管道AVFilterGraph来统一管理和释放资源的
-    if (graph) {
-        avfilter_graph_free(&graph);
     }
 }
