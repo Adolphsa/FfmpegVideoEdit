@@ -1,5 +1,9 @@
 package com.lc.fve;
 
+import androidx.activity.result.ActivityResult;
+import androidx.activity.result.ActivityResultCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
@@ -11,6 +15,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
+import android.util.Printer;
 import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -18,6 +23,11 @@ import android.widget.Toast;
 import com.lc.fve.databinding.ActivityMainBinding;
 import com.lc.fve.utils.AssetUtils;
 import com.lc.fve.utils.BitmapUtils;
+import com.lc.fve.utils.GlideEngine;
+import com.luck.picture.lib.PictureSelector;
+import com.luck.picture.lib.config.PictureConfig;
+import com.luck.picture.lib.config.PictureMimeType;
+import com.luck.picture.lib.entity.LocalMedia;
 import com.permissionx.guolindev.PermissionX;
 import com.permissionx.guolindev.callback.RequestCallback;
 
@@ -28,12 +38,16 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
 
+    private ActivityResultLauncher<Intent> launcherResult;
+
     private static final int REQUEST_CHOOSE_IMAGE1 = 1001;
 
     private ActivityMainBinding binding;
 
     private String resourceImageDir;
     private String resourceVideoDir;
+
+    String[] stringArr;
 
     File resultVideo;
     File mergeVideo;
@@ -47,6 +61,9 @@ public class MainActivity extends AppCompatActivity {
 
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+
+        // 注册需要写在onCreate或Fragment onAttach里，否则会报java.lang.IllegalStateException异常
+        launcherResult = createActivityResultLauncher();
 
         checkPermission();
 
@@ -78,7 +95,7 @@ public class MainActivity extends AppCompatActivity {
         binding.startJpgToVideo.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                String srcPath = resourceImageDir + File.separator + "name%3d.jpg";
+                String srcPath = resourceImageDir + File.separator + "name001.jpg";
                 new Thread(new Runnable() {
                     @Override
                     public void run() {
@@ -96,11 +113,28 @@ public class MainActivity extends AppCompatActivity {
                     public void run() {
 //                        String srcPath1 = resourceVideoDir + File.separator + "jpg_result.mp4";
 //                        String srcPath1 = resourceVideoDir + File.separator + "test_1280x720_2.mp4";
-                        String srcPath1 = resourceVideoDir + File.separator + "VID_20211028_111908.mp4";
-                        String srcPath2 = resourceVideoDir + File.separator + "VID_20211101_174852.mp4";
+//                        String srcPath1 = resourceVideoDir + File.separator + "VID_20211028_111908.mp4";
+//                        String srcPath2 = resourceVideoDir + File.separator + "VID_20211101_174852.mp4";
 
-                        String[] stringArr = {srcPath1, srcPath2};
-                        fmpegNative.mergeFiles(stringArr, mergeVideo.getAbsolutePath());
+                        PermissionX.init(MainActivity.this)
+                                .permissions(Manifest.permission.READ_EXTERNAL_STORAGE,
+                                            Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                .request(new RequestCallback() {
+                                    @Override
+                                    public void onResult(boolean allGranted, @NonNull List<String> grantedList, @NonNull List<String> deniedList) {
+                                        if (allGranted) {
+//                                            String src1 = resourceVideoDir + File.separator + "hasiqi_video.mp4";
+//                                            String src1 = resourceVideoDir + File.separator + "jpg_result.mp4";
+//                                            String src1 = resourceVideoDir + File.separator + "test_1280x720_4.mp4";
+//                                            String src2 = resourceVideoDir + File.separator + "VID_20211101_174852.mp4";
+//                                            String[] tmpStrArr = {src1, src2};
+                                            fmpegNative.mergeFiles(stringArr, mergeVideo.getAbsolutePath());
+                                            Log.d(TAG, "onResult: " + fmpegNative.getMergeStatus());
+                                        } else  {
+                                            Log.d(TAG, "onResult: 没有权限");
+                                        }
+                                    }
+                                });
                     }
                 }).start();
 
@@ -154,11 +188,30 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        binding.startSelectMedia.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startChooseMedia();
+            }
+        });
+
+    }
+
+    private void startChooseMedia() {
+        PictureSelector.create(MainActivity.this)
+                .openGallery(PictureMimeType.ofAll())
+                .imageEngine(GlideEngine.createGlideEngine())
+                .isWithVideoImage(true)
+                .selectionMode(PictureConfig.MULTIPLE)
+                .isPageStrategy(true, true)
+                .maxSelectNum(99)
+                .maxVideoSelectNum(99)
+                .forResult(launcherResult);
     }
 
     private void startChooseImageIntentForResult(int requestCode) {
         Intent intent = new Intent();
-        intent.setType("image/*");
+        intent.setType("*/*");
         intent.setAction(Intent.ACTION_GET_CONTENT);
         startActivityForResult(Intent.createChooser(intent, "Select Picture"), requestCode);
     }
@@ -225,5 +278,27 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
                 });
+    }
+
+    /**
+     * 创建一个ActivityResultLauncher
+     * @return
+     */
+    private ActivityResultLauncher<Intent> createActivityResultLauncher() {
+        return registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), new ActivityResultCallback<ActivityResult>() {
+            @Override
+            public void onActivityResult(ActivityResult result) {
+                int resultCode = result.getResultCode();
+                if (resultCode == RESULT_OK) {
+                    List<LocalMedia> selectList = PictureSelector.obtainMultipleResult(result.getData());
+                    stringArr = new String[selectList.size()];
+                    for (int i = 0; i < selectList.size(); i++) {
+                        String realPath = selectList.get(i).getRealPath();
+                        Log.i(TAG, "绝对路径:" + realPath);
+                        stringArr[i] = realPath;
+                    }
+                }
+            }
+        });
     }
 }

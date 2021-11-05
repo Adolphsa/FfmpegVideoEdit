@@ -5,6 +5,9 @@
 #ifndef FFMPEGVIDEOEDIT_COMMONUTILS_H
 #define FFMPEGVIDEOEDIT_COMMONUTILS_H
 
+#include <string>
+#include <vector>
+using namespace std;
 
 
 extern "C"
@@ -56,6 +59,17 @@ static unsigned long getTickCount() {
     if (gettimeofday(&tv, NULL) != 0)
         return 0;
     return (tv.tv_sec*1000 + tv.tv_usec / 1000);
+}
+
+static void split(const string& s, vector<string>& tokens, const string& delimiters = " ")
+{
+    string::size_type lastPos = s.find_first_not_of(delimiters, 0);
+    string::size_type pos = s.find_first_of(delimiters, lastPos);
+    while (string::npos != pos || string::npos != lastPos) {
+        tokens.push_back(s.substr(lastPos, pos - lastPos));
+        lastPos = s.find_first_not_of(delimiters, pos);
+        pos = s.find_first_of(delimiters, lastPos);
+    }
 }
 
 #endif //FFMPEGVIDEOEDIT_COMMONUTILS_H

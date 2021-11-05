@@ -4,6 +4,8 @@
 
 #include "JpgVideo.h"
 
+static int num_pts = 0;
+
 JpgVideo::JpgVideo() {
     sws_ctx = nullptr;
     de_frame = nullptr;
@@ -53,7 +55,10 @@ void JpgVideo::releaseSources() {
 }
 
 void JpgVideo::doJpgToVideo(string srcPath, string dstPath) {
+
     int video_index = -1;
+
+    num_pts = 0;
 
     //创建jpg的解封装上下文
     int ret = 0;
@@ -139,13 +144,13 @@ void JpgVideo::doJpgToVideo(string srcPath, string dstPath) {
     en_ctx->height = 1280;
 //    en_ctx->height = in_stream->codecpar->height;
 //    en_ctx->pix_fmt = (enum AVPixelFormat) in_stream->codecpar->format;
-    en_ctx->pix_fmt = (enum AVPixelFormat)AV_PIX_FMT_YUV420P;
+    en_ctx->pix_fmt = (enum AVPixelFormat) AV_PIX_FMT_YUV420P;
     LOGD("en_ctx->pix_fmt %d, width = %d, height = %d", en_ctx->pix_fmt, en_ctx->width,
          en_ctx->height);
 //    en_ctx->bit_rate = 0.96 * 100000000;
     //numberator: 分子 denominator: 分母
-    en_ctx->framerate = (AVRational) {1, 3};
-    en_ctx->time_base = (AVRational) {3, 1};
+    en_ctx->framerate = (AVRational) {25, 1};
+    en_ctx->time_base = (AVRational) {1, 25};
     // 某些封装格式必须要设置，否则会造成封装后文件中信息的缺失
     if (ou_fmt->oformat->flags & AVFMT_GLOBALHEADER) {
         en_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
@@ -209,6 +214,9 @@ void JpgVideo::doJpgToVideo(string srcPath, string dstPath) {
     av_frame_get_buffer(en_frame, 0);
     av_frame_make_writable(en_frame);
 
+    //循环读数据
+    av_opt_set(in_fmt->priv_data, "loop", "1", 0);
+
     AVPacket *in_pkt = av_packet_alloc();
     while (av_read_frame(in_fmt, in_pkt) == 0) {
 
@@ -216,9 +224,15 @@ void JpgVideo::doJpgToVideo(string srcPath, string dstPath) {
             continue;
         }
         LOGD("av_read_frame");
-        // 先解码
-        doDecode(in_pkt);
-        av_packet_unref(in_pkt);
+        LOGD("en_frame->pts = %ld", en_frame->pts);
+
+        if (en_frame->pts < 75) {
+            // 先解码
+            doDecode(in_pkt);
+            av_packet_unref(in_pkt);
+        } else {
+            break;
+        }
     }
 
     // 刷新解码缓冲区
@@ -230,9 +244,8 @@ void JpgVideo::doJpgToVideo(string srcPath, string dstPath) {
     releaseSources();
 }
 
-void JpgVideo::doDecode(AVPacket *in_pkt)
-{
-    static int num_pts = 0;
+void JpgVideo::doDecode(AVPacket *in_pkt) {
+
     // 先解码
     avcodec_send_packet(de_ctx, in_pkt);
     while (true) {
@@ -240,12 +253,13 @@ void JpgVideo::doDecode(AVPacket *in_pkt)
         if (ret == AVERROR_EOF) {
             doEncode(nullptr);
             break;
-        } else if(ret < 0) {
+        } else if (ret < 0) {
             break;
         }
 
         // 成功解码了；先进行格式转换然后再编码
-        if(sws_scale(sws_ctx, de_frame->data, de_frame->linesize, 0, de_frame->height, en_frame->data, en_frame->linesize) < 0) {
+        if (sws_scale(sws_ctx, de_frame->data, de_frame->linesize, 0, de_frame->height,
+                      en_frame->data, en_frame->linesize) < 0) {
             LOGD("sws_scale fail");
             releaseSources();
             return;
@@ -254,6 +268,7 @@ void JpgVideo::doDecode(AVPacket *in_pkt)
 
         // 编码前要设置好pts的值，如果en_ctx->time_base为{1,fps}，那么这里pts的值即为帧的个数值
         en_frame->pts = num_pts++;
+//        LOGD("en_frame->pts = %ld", en_frame->pts);
         doEncode(en_frame);
     }
 
@@ -276,7 +291,7 @@ void JpgVideo::doEncode(AVFrame *en_frame1) {
         // 成功编码了;写入之前要进行时间基的转换
         AVStream *stream = ou_fmt->streams[video_ou_index];
         av_packet_rescale_ts(ou_pkt, en_ctx->time_base, stream->time_base);
-        LOGD("video pts %ld(%s)",ou_pkt->pts,av_ts2timestr(ou_pkt->pts, &stream->time_base));
+        LOGD("video pts %ld(%s)", ou_pkt->pts, av_ts2timestr(ou_pkt->pts, &stream->time_base));
         av_write_frame(ou_fmt, ou_pkt);
     }
 }

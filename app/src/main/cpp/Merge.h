@@ -45,6 +45,8 @@ public:
      */
     void mergeFiles(vector<string> srcVector, string dPath1);
 
+    int getProcessStatus();
+
     /**
      * 设置视频编码参数
      * @param width
@@ -70,14 +72,20 @@ public:
 
 private:
 
+    int processStatus;
+    vector<string> imgTmpPaths;
+
     //encoder param
     int encoderWidth;
     int encoderHeight;
     int encoderBitrate;
     int encoderFps;
 
-    fstream  preFile;
-    fstream outFile;
+//    fstream  preFile;
+//    fstream outFile;
+
+    uint8_t *yuvBuffer;
+    uint8_t *scaleBuffer;
 
     string dstpath;
     AVFormatContext *in_fmt1;

@@ -95,6 +95,13 @@ Java_com_lc_fve_FFmpegNative_mergeFiles(JNIEnv *env, jobject thiz, jobjectArray 
 }
 
 extern "C"
+JNIEXPORT jint JNICALL
+Java_com_lc_fve_FFmpegNative_getMergeStatus(JNIEnv *env, jobject thiz) {
+
+    return (jint)mergeObj.getProcessStatus();
+}
+
+extern "C"
 JNIEXPORT void JNICALL
 Java_com_lc_fve_FFmpegNative_addMusic(JNIEnv *env, jobject thiz, jstring video_src,
                                       jstring audio_src, jstring dst_path, jstring start_time) {
@@ -125,4 +132,3 @@ Java_com_lc_fve_FFmpegNative_doVideoScale(JNIEnv *env, jobject thiz, jstring src
     FilterVideoScale filterVideoScale;
     filterVideoScale.doVideoScale(srcPath, dstPath, 0, 0);
 }
-

@@ -5,14 +5,17 @@
 #include "Merge.h"
 #include "CommonUtils.h"
 #include "libyuv.h"
-#include "FilterVideoScale.h"
-
+#include "JpgVideo.h"
 
 #include <utility>
 
 Merge::Merge() {
     av_register_all();
     avcodec_register_all();
+
+    processStatus = -1;
+    yuvBuffer = NULL;
+    scaleBuffer = NULL;
 
     encoderWidth = 720;
     encoderHeight = 1280;
@@ -42,6 +45,7 @@ Merge::Merge() {
     swsctx = NULL;
     swrctx = NULL;
     srcPaths = vector<string>();
+    imgTmpPaths = vector<string>();
     in_fmts = vector<AVFormatContext *>();
     de_ctxs = vector<DeCtx>();
     in_indexes = vector<MediaIndex>();
@@ -76,32 +80,42 @@ void Merge::setEncodeParam(int width, int height, int videoBitrate, int fps) {
 //合并非流式容器
 void Merge::mergeFiles(vector<string> srcVector, string dPath1) {
 
-    outFile.open("/storage/emulated/0/Android/data/com.lc.fve/files/Movies/aa_result_test.yuv",
-                 ios::out);
-    preFile.open("/storage/emulated/0/Android/data/com.lc.fve/files/Movies/aa_pre_test.yuv",
-                 ios::out);
+//    outFile.open("/storage/emulated/0/Android/data/com.lc.fve/files/Movies/aa_result_test.yuv",
+//                 ios::out);
+//    preFile.open("/storage/emulated/0/Android/data/com.lc.fve/files/Movies/aa_pre_test.yuv",
+//                 ios::out);
 
+    processStatus = 0;
     dstpath = std::move(dPath1);
 
-    srcPaths = std::move(srcVector);
+//    srcPaths = std::move(srcVector);
+
+    JpgVideo jpgVideo;
+
+    //需要先将图片转成视频
+    for (int i = 0; i < srcVector.size(); ++i) {
+        vector<string> tempVector;
+        split(srcVector[i], tempVector, ".");
+        if (!tempVector.empty()) {
+            string temp0 = tempVector.at(0);
+            string temp1 = tempVector.at(1);
+            LOGD("temp0 = %s, temp1 = %s", temp0.c_str(), temp1.c_str());
+            if (!temp1.empty()) {
+                if ((temp1 == "jpeg") || (temp1 == "jpg")) {
+                    //为图片
+                    string dstPath = temp0.append(".mp4");
+                    jpgVideo.doJpgToVideo(srcVector[i], dstPath);
+                    srcPaths.push_back(dstPath);
+                    imgTmpPaths.push_back(dstPath);
+                } else if (temp1 == "mp4") {
+                    srcPaths.push_back(srcVector[i]);
+                }
+            }
+        }
+
+    }
 
     unsigned long startTime = getTickCount();
-
-//    for (int i = 0; i < srcVector.size(); ++i) {
-//        FilterVideoScale filterVideoScale;
-//        string temp = srcVector.at(i);
-//        string str1 = string(temp, 0, temp.size()-4);
-//        string str2 = string(temp, temp.size()-4, 4);
-//        LOGD("str1 = %s, str2 = %s", str1.c_str(), str2.c_str());
-//
-//        str1.append("_pre");
-//        str1.append(to_string(i));
-//        str1.append(str2);
-//        LOGD("result str1 = %s", str1.c_str());
-//
-//        filterVideoScale.doVideoScale(temp, str1);
-//        srcPaths.push_back(str1);
-//    }
 
     if (!openInputFile()) {
         return;
@@ -110,8 +124,6 @@ void Merge::mergeFiles(vector<string> srcVector, string dPath1) {
     if (!addStream()) {
         return;
     }
-
-
 
     // 开始解码和重新编码
     for (int i = 0; i < in_fmts.size(); i++) {
@@ -153,6 +165,12 @@ void Merge::mergeFiles(vector<string> srcVector, string dPath1) {
 
     // 是否资源
     releaseSources();
+    processStatus = 1;
+
+    //删除临时产生的图片转MP4文件
+    for (const string& imgPath : imgTmpPaths) {
+        remove(imgPath.c_str());
+    }
 }
 
 
@@ -252,12 +270,6 @@ bool Merge::openInputFile() {
                 // 输出文件的音频编码标准
                 if (wantIndex.audio_codecId == AV_CODEC_ID_NONE) {  // 取第一个出现的值
                     wantIndex.audio_index = j;
-//                    wantIndex.sample_rate = 48000;
-//                    wantIndex.ch_layout = 2;
-//                    wantIndex.audio_codecId = stream->codecpar->codec_id;
-//                    wantIndex.smp_fmt = AV_SAMPLE_FMT_FLTP;
-//                    wantIndex.audio_bit_rate = 103445;
-
                     wantIndex.sample_rate = stream->codecpar->sample_rate;
                     wantIndex.ch_layout = stream->codecpar->channel_layout;
                     wantIndex.audio_codecId = stream->codecpar->codec_id;
@@ -476,27 +488,29 @@ void Merge::doDecode(AVPacket *pkt, bool isVideo) {
         en_frame = audio_en_frame;
         isVideo = false;
     }
-    if (ctx == NULL) {
-        LOGD("%d error avcodecxtx", curIndex);
-        releaseSources();
-        return;
-    }
+//    if (ctx == NULL) {
+//        LOGD("%d error avcodecxtx", curIndex);
+//        releaseSources();
+//        return;
+//    }
 
-    // 开始解码
-    int ret = 0;
-    avcodec_send_packet(ctx, pkt);
-    while (true) {
-        ret = avcodec_receive_frame(ctx, de_frame);
-        if (ret == AVERROR_EOF && curIndex.file_index + 1 == in_fmts.size()) {   // 说明解码完毕
-            doEncode(NULL, ctx->width > 0);
-            LOGD("decode finish");
-            break;
-        } else if (ret < 0) {
-            break;
+    if (ctx != NULL) {
+        // 开始解码
+        int ret = 0;
+        avcodec_send_packet(ctx, pkt);
+        while (true) {
+            ret = avcodec_receive_frame(ctx, de_frame);
+            if (ret == AVERROR_EOF && curIndex.file_index + 1 == in_fmts.size()) {   // 说明解码完毕
+                doEncode(NULL, ctx->width > 0);
+                LOGD("decode finish");
+                break;
+            } else if (ret < 0) {
+                break;
+            }
+
+            // 解码成功;开始编码
+            doConvert(&en_frame, de_frame, de_frame->width > 0);
         }
-
-        // 解码成功;开始编码
-        doConvert(&en_frame, de_frame, de_frame->width > 0);
     }
 }
 
@@ -550,7 +564,7 @@ void Merge::doConvert(AVFrame **dst, AVFrame *src, bool isVideo) {
             int whSize = (*dst)->width * (*dst)->height;
             int uv_stride = (*dst)->width / 2;
             int uv_length = uv_stride * (*dst)->height / 2;
-            uint8_t *yuvBuffer = (uint8_t *) malloc(whSize * 3 / 2);
+            yuvBuffer = (uint8_t *) malloc(whSize * 3 / 2);
             LOGD("sizeof(yuvBuffer) = %lu", sizeof(yuvBuffer) * whSize * 3 / 2);
             memset(yuvBuffer, 0, whSize * 3 / 2);
             uint8_t *Y_data_Dst = yuvBuffer;
@@ -594,7 +608,7 @@ void Merge::doConvert(AVFrame **dst, AVFrame *src, bool isVideo) {
         int scaleH = encoderHeight;
         int y_size = scaleW * scaleH;
         int u_size = (scaleW >> 1) * (scaleH >> 1);
-        uint8_t *scaleBuffer = (uint8_t *) malloc(y_size * 3 / 2);
+        scaleBuffer = (uint8_t *) malloc(y_size * 3 / 2);
         uint8_t *Y_scale_Dst = scaleBuffer;
         uint8_t *U_scale_Dst = scaleBuffer + y_size;
         uint8_t *V_scale_Dst = U_scale_Dst + u_size;
@@ -623,7 +637,6 @@ void Merge::doConvert(AVFrame **dst, AVFrame *src, bool isVideo) {
              yuv_frame->linesize[0], yuv_frame->linesize[1], yuv_frame->linesize[2]);
         LOGD("(*dst)->width3 = %d, (*dst)->height3 = %d", (*dst)->width, (*dst)->height);
 
-
         /** 遇到问题：合成后的视频时长不是各个视频文件视频时长之和
          *  分析原因：因为每个视频文件的fps不一样，合并时pts没有和每个视频文件的fps对应
          *  解决方案：合并时pts要和每个视频文件的fps对应
@@ -631,6 +644,16 @@ void Merge::doConvert(AVFrame **dst, AVFrame *src, bool isVideo) {
         yuv_frame->pts = next_video_pts + video_en_ctx->time_base.den / curIndex.fps;
         next_video_pts += video_en_ctx->time_base.den / curIndex.fps;
         doEncode(yuv_frame, yuv_frame->width > 0);
+
+        if (yuvBuffer != NULL) {
+            free(yuvBuffer);
+            yuvBuffer = NULL;
+        }
+
+        if (scaleBuffer != NULL) {
+            free(scaleBuffer);
+            scaleBuffer = NULL;
+        }
 
     } else if (isVideo && (src->width == (*dst)->width && src->format == (*dst)->format)) {
         LOGD("直接复制视频流");
@@ -640,7 +663,7 @@ void Merge::doConvert(AVFrame **dst, AVFrame *src, bool isVideo) {
         int scaleH = encoderHeight;
         int y_size = scaleW * scaleH;
         int u_size = (scaleW >> 1) * (scaleH >> 1);
-        uint8_t *scaleBuffer = (uint8_t *) malloc(y_size * 3 / 2);
+        scaleBuffer = (uint8_t *) malloc(y_size * 3 / 2);
         uint8_t *Y_scale_Dst = scaleBuffer;
         uint8_t *U_scale_Dst = scaleBuffer + y_size;
         uint8_t *V_scale_Dst = U_scale_Dst + u_size;
@@ -669,6 +692,11 @@ void Merge::doConvert(AVFrame **dst, AVFrame *src, bool isVideo) {
         yuv_frame->pts = next_video_pts + video_en_ctx->time_base.den / curIndex.fps;
         next_video_pts += video_en_ctx->time_base.den / curIndex.fps;
         doEncode(yuv_frame, yuv_frame->width > 0);
+
+        if (scaleBuffer != NULL) {
+            free(scaleBuffer);
+            scaleBuffer = NULL;
+        }
     }
 
     //handle audio
@@ -850,8 +878,10 @@ void Merge::doEncode(AVFrame *frame, bool isVideo) {
     }
 }
 
-void Merge::addMusic(const string& video_path, const string& audio_path, const string& dst_path, const string& start_time) {
+void Merge::addMusic(const string &video_path, const string &audio_path, const string &dst_path,
+                     const string &start_time) {
 
+    processStatus = 0;
     //MP4文件标准封装为h264和aac格式 目前暂不支持mp3音频文件
     string start = start_time;
     if (start_time.length() <= 8) {
@@ -1011,10 +1041,12 @@ void Merge::addMusic(const string& video_path, const string& audio_path, const s
 
     // 释放资源
     releaseSources();
+    processStatus = 1;
 }
 
 void Merge::deleteAudio(string videoSrcPath, string videoDstPath) {
 
+    processStatus = 0;
     in_fmt1 = NULL;// 用于解封装视频
     ou_fmt = NULL;  //用于封装音视频
 
@@ -1086,7 +1118,8 @@ void Merge::deleteAudio(string videoSrcPath, string videoDstPath) {
                                  ou_fmt->streams[video_ou_index]->time_base);
             v_pkt->stream_index = video_ou_index;
             video_max_pts = max(v_pkt->pts, video_max_pts);
-            LOGD("deleteAudio video pts %d(%s)", v_pkt->pts, av_ts2timestr(v_pkt->pts, &stream->time_base));
+            LOGD("deleteAudio video pts %d(%s)", v_pkt->pts,
+                 av_ts2timestr(v_pkt->pts, &stream->time_base));
             if (av_write_frame(ou_fmt, v_pkt) < 0) {
                 LOGD("1 av_write_frame < 0");
                 releaseSources();
@@ -1100,9 +1133,15 @@ void Merge::deleteAudio(string videoSrcPath, string videoDstPath) {
 
     // 释放资源
     releaseSources();
+    processStatus = 1;
+}
+
+int Merge::getProcessStatus() {
+    return processStatus;
 }
 
 void Merge::releaseSources() {
+    processStatus = -1;
     if (in_fmt1) {
         avformat_close_input(&in_fmt1);
         in_fmt1 = NULL;
@@ -1165,12 +1204,23 @@ void Merge::releaseSources() {
     if (video_en_frame) {
         av_frame_free(&video_en_frame);
     }
-    if (outFile) {
-        outFile.close();
+//    if (outFile) {
+//        outFile.close();
+//    }
+//    if (preFile) {
+//        preFile.close();
+//    }
+
+    if (yuvBuffer != NULL) {
+        free(yuvBuffer);
+        yuvBuffer = NULL;
     }
-    if (preFile) {
-        preFile.close();
+
+    if (scaleBuffer != NULL) {
+        free(scaleBuffer);
+        scaleBuffer = NULL;
     }
+
     if (yuv_frame) {
         av_frame_free(&yuv_frame);
     }

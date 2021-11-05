@@ -42,6 +42,12 @@ public class FFmpegNative {
      */
     public native void mergeFiles(String[] srcPathList, String dst);
 
+    /**
+     * 获取合并处理状态
+     * @return -1表示处理出错 0表示开始处理  1表示处理完成
+     */
+    public native int getMergeStatus();
+
 
     /**
      *添加音乐
