@@ -16,6 +16,11 @@ public class FFmpegNative {
      */
     public native String stringFromJNI();
 
+    private native void startPlayWithFile(String fileName);
+    private native int getVideoWidth();
+    private native int getVideoHeight();
+    private native int getVideoRotateAngle();
+
     /**
      * 合并图片
      * @param srcPath 图片地址
@@ -66,4 +71,21 @@ public class FFmpegNative {
     public native void deleteAudio(String videoSrc, String videoDst);
 
     public native void doVideoScale(String src,String dst);
+
+    public void startVideoPlayerWithPath(String fileString)
+    {
+        startPlayWithFile(fileString);
+    }
+
+    public int getVideoWidthFormNdk() {
+        return getVideoWidth();
+    }
+
+    public int getVideoHeightFormNdk() {
+        return getVideoHeight();
+    }
+
+    public int getVideoRotateFormNdk() {
+        return getVideoRotateAngle();
+    }
 }

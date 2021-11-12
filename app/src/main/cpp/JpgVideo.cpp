@@ -56,6 +56,8 @@ void JpgVideo::releaseSources() {
 
 void JpgVideo::doJpgToVideo(string srcPath, string dstPath) {
 
+    releaseSources();
+
     int video_index = -1;
 
     num_pts = 0;

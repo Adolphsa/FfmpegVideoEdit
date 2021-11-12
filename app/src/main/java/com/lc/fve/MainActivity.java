@@ -20,6 +20,7 @@ import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.arthenica.mobileffmpeg.FFmpeg;
 import com.lc.fve.databinding.ActivityMainBinding;
 import com.lc.fve.utils.AssetUtils;
 import com.lc.fve.utils.BitmapUtils;
@@ -33,6 +34,7 @@ import com.permissionx.guolindev.callback.RequestCallback;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
@@ -48,9 +50,11 @@ public class MainActivity extends AppCompatActivity {
     private String resourceVideoDir;
 
     String[] stringArr;
+    List<String> selectMediaList;
 
     File resultVideo;
     File mergeVideo;
+    File txtFile;
     File addMusicFile;
     File scaleResultFile;
     File noAudioResultFile;
@@ -78,7 +82,9 @@ public class MainActivity extends AppCompatActivity {
         addMusicFile = new File(resourceVideoDir, "add_result_music.mp4");
         scaleResultFile = new File(resourceVideoDir, "result_scale.mp4");
         noAudioResultFile = new File(resourceVideoDir, "no_audio.mp4");
+        txtFile = new File(resourceVideoDir, "file_path.txt");
 
+        selectMediaList = new ArrayList<>();
         FFmpegNative fmpegNative = new FFmpegNative();
 
         // Example of a call to a native method
@@ -95,11 +101,15 @@ public class MainActivity extends AppCompatActivity {
         binding.startJpgToVideo.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                String srcPath = resourceImageDir + File.separator + "name001.jpg";
+                String srcPath = resourceImageDir + File.separator + "name004.jpg";
                 new Thread(new Runnable() {
                     @Override
                     public void run() {
-                        fmpegNative.doJpgToVideo(srcPath, resultVideo.getAbsolutePath());
+//                        fmpegNative.doJpgToVideo(srcPath, resultVideo.getAbsolutePath());
+                        long startTime = System.currentTimeMillis();
+                        FFmpegCmd.getInstance().jpgToVideo(srcPath, resultVideo.getAbsolutePath(), -1);
+                        long endTime = System.currentTimeMillis();
+                        Log.d(TAG, "run: 耗时 = " + (endTime-startTime)/1000);
                     }
                 }).start();
             }
@@ -128,6 +138,9 @@ public class MainActivity extends AppCompatActivity {
 //                                            String src1 = resourceVideoDir + File.separator + "test_1280x720_4.mp4";
 //                                            String src2 = resourceVideoDir + File.separator + "VID_20211101_174852.mp4";
 //                                            String[] tmpStrArr = {src1, src2};
+                                            if (mergeVideo.exists()) {
+                                                mergeVideo.delete();
+                                            }
                                             fmpegNative.mergeFiles(stringArr, mergeVideo.getAbsolutePath());
                                             Log.d(TAG, "onResult: " + fmpegNative.getMergeStatus());
                                         } else  {
@@ -192,6 +205,38 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 startChooseMedia();
+            }
+        });
+
+        binding.videoSplicing.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                String leftVideo = resourceVideoDir + File.separator + "2.mp4";
+                String rightVideo = resourceVideoDir + File.separator + "1.mp4";
+                String resultVideo = resourceVideoDir + File.separator + "3.mp4";
+                //ffmpeg -i 1.mp4 -i 2.mp4 -filter_complex hstack -preset fast 3.mp4
+                FFmpegCmd.getInstance().horizontalSplicingVideo(leftVideo, rightVideo, resultVideo);
+            }
+        });
+
+        binding.getVideoInfo.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+//                fmpegNative.startVideoPlayerWithPath(stringArr[0]);
+//                int videoWidth = fmpegNative.getVideoWidthFormNdk();
+//                int videoHeight = fmpegNative.getVideoHeightFormNdk();
+//                int videoRotate = fmpegNative.getVideoRotateFormNdk();
+//                Log.d(TAG, "onClick: width = " + videoWidth + ", height = " + videoHeight + ", rotate = " + videoRotate);
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        long startTime = System.currentTimeMillis();
+                        FFmpegCmd.getInstance().mergeFiles(selectMediaList, txtFile.getAbsolutePath(), mergeVideo.getAbsolutePath());
+                        long endTime = System.currentTimeMillis();
+                        Log.d(TAG, "run: 合并耗时 = " + (endTime-startTime)/1000.0);
+                    }
+                }).start();
+
             }
         });
 
@@ -291,11 +336,13 @@ public class MainActivity extends AppCompatActivity {
                 int resultCode = result.getResultCode();
                 if (resultCode == RESULT_OK) {
                     List<LocalMedia> selectList = PictureSelector.obtainMultipleResult(result.getData());
+                    selectMediaList.clear();
                     stringArr = new String[selectList.size()];
                     for (int i = 0; i < selectList.size(); i++) {
                         String realPath = selectList.get(i).getRealPath();
                         Log.i(TAG, "绝对路径:" + realPath);
                         stringArr[i] = realPath;
+                        selectMediaList.add(realPath);
                     }
                 }
             }

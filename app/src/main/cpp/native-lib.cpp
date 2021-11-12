@@ -16,7 +16,9 @@ extern "C"
 #include "JpgVideo.h"
 #include "Merge.h"
 #include "FilterVideoScale.h"
+#include "LCMediaInfo.h"
 
+LCMediaInfo m_lcMediaInfo;
 Merge mergeObj;
 
 std::string jstring2string(JNIEnv *env, jstring jStr) {
@@ -83,6 +85,7 @@ JNIEXPORT void JNICALL
 Java_com_lc_fve_FFmpegNative_mergeFiles(JNIEnv *env, jobject thiz, jobjectArray src_path_list,
                                         jstring dst) {
     vector<string> srcPathVector = vector<string>();
+    srcPathVector.clear();
     jsize size = env->GetArrayLength(src_path_list);
     for (int i = 0; i < size; i++) {
         jstring jStr = (jstring) (env->GetObjectArrayElement(src_path_list, i));
@@ -131,4 +134,30 @@ Java_com_lc_fve_FFmpegNative_doVideoScale(JNIEnv *env, jobject thiz, jstring src
 
     FilterVideoScale filterVideoScale;
     filterVideoScale.doVideoScale(srcPath, dstPath, 0, 0);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_lc_fve_FFmpegNative_startPlayWithFile(JNIEnv *env, jobject thiz, jstring file_name) {
+    std::string fileString = env->GetStringUTFChars(file_name,0);
+    LOGD("PATH STRING: %s",fileString.c_str());
+
+    m_lcMediaInfo.StopPlayVideo();
+    m_lcMediaInfo.SetVideoFilePath(fileString);
+    m_lcMediaInfo.InitVideoCodec();
+}
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_lc_fve_FFmpegNative_getVideoWidth(JNIEnv *env, jobject thiz) {
+    return m_lcMediaInfo.GetVideoWidth();
+}
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_lc_fve_FFmpegNative_getVideoHeight(JNIEnv *env, jobject thiz) {
+    return m_lcMediaInfo.GetVideoHeight();
+}
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_lc_fve_FFmpegNative_getVideoRotateAngle(JNIEnv *env, jobject thiz) {
+    return m_lcMediaInfo.GetRotateAngle();
 }

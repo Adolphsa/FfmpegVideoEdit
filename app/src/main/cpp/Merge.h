@@ -177,6 +177,8 @@ index.rotate = rt;
 
     void doEncode(AVFrame *frame, bool isVideo);
 
+    void resetAllMergeParameters();
+
     void releaseSources();
 };
 

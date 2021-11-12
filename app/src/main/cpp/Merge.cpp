@@ -13,45 +13,7 @@ Merge::Merge() {
     av_register_all();
     avcodec_register_all();
 
-    processStatus = -1;
-    yuvBuffer = NULL;
-    scaleBuffer = NULL;
-
-    encoderWidth = 720;
-    encoderHeight = 1280;
-    encoderBitrate = 512000;
-    encoderFps = 25;
-
-    in_fmt1 = NULL;
-    in_fmt2 = NULL;
-    ou_fmt = NULL;
-    video1_in_index = -1;
-    audio1_in_index = -1;
-    video2_in_index = -1;
-    audio2_in_index = -1;
-    video_ou_index = -1;
-    audio_ou_index = -1;
-    next_video_pts = 0;
-    next_audio_pts = 0;
-
-    curIndex = {0, -1, -1};
-    preIndex = {0, -1, -1};
-    ou_fmt = NULL;
-    video_de_frame = NULL;
-    audio_de_frame = NULL;
-    video_en_frame = NULL;
-    yuv_frame = NULL;
-    audio_en_frame = NULL;
-    swsctx = NULL;
-    swrctx = NULL;
-    srcPaths = vector<string>();
-    imgTmpPaths = vector<string>();
-    in_fmts = vector<AVFormatContext *>();
-    de_ctxs = vector<DeCtx>();
-    in_indexes = vector<MediaIndex>();
-    video_en_ctx = NULL;
-    audio_en_ctx = NULL;
-    audio_buffer = NULL;
+    resetAllMergeParameters();
 }
 
 Merge::~Merge() {
@@ -85,12 +47,17 @@ void Merge::mergeFiles(vector<string> srcVector, string dPath1) {
 //    preFile.open("/storage/emulated/0/Android/data/com.lc.fve/files/Movies/aa_pre_test.yuv",
 //                 ios::out);
 
+    releaseSources();
+    resetAllMergeParameters();
+
     processStatus = 0;
-    dstpath = std::move(dPath1);
+    dstpath = dPath1;
 
 //    srcPaths = std::move(srcVector);
 
     JpgVideo jpgVideo;
+
+    unsigned long startTime = getTickCount();
 
     //需要先将图片转成视频
     for (int i = 0; i < srcVector.size(); ++i) {
@@ -103,19 +70,21 @@ void Merge::mergeFiles(vector<string> srcVector, string dPath1) {
             if (!temp1.empty()) {
                 if ((temp1 == "jpeg") || (temp1 == "jpg")) {
                     //为图片
-                    string dstPath = temp0.append(".mp4");
-                    jpgVideo.doJpgToVideo(srcVector[i], dstPath);
-                    srcPaths.push_back(dstPath);
-                    imgTmpPaths.push_back(dstPath);
+                    LOGD("pic");
+                    string dstPathTemp = temp0.append(".mp4");
+                    LOGD("srcPath = %s", srcVector[i].c_str());
+                    LOGD("dstPath = %s", dstPathTemp.c_str());
+                    jpgVideo.doJpgToVideo(srcVector[i], dstPathTemp);
+                    srcPaths.push_back(dstPathTemp);
+                    imgTmpPaths.push_back(dstPathTemp);
                 } else if (temp1 == "mp4") {
+                    LOGD("video");
                     srcPaths.push_back(srcVector[i]);
                 }
             }
         }
 
     }
-
-    unsigned long startTime = getTickCount();
 
     if (!openInputFile()) {
         return;
@@ -153,14 +122,16 @@ void Merge::mergeFiles(vector<string> srcVector, string dPath1) {
         doDecode(NULL, false);
 
         LOGD("finish file %d", i);
-        unsigned long endTime = getTickCount();
-        LOGD("耗时 = %ld", (endTime - startTime) / 1000);
     }
 
     // 写入文件尾部
     if (av_write_trailer(ou_fmt) < 0) {
         LOGD("av_write_trailer fail");
     }
+
+    unsigned long endTime = getTickCount();
+    LOGD("耗时 = %ld", (endTime - startTime) / 1000);
+
     LOGD("结束写入");
 
     // 是否资源
@@ -1138,6 +1109,48 @@ void Merge::deleteAudio(string videoSrcPath, string videoDstPath) {
 
 int Merge::getProcessStatus() {
     return processStatus;
+}
+
+void Merge::resetAllMergeParameters() {
+    processStatus = -1;
+    yuvBuffer = NULL;
+    scaleBuffer = NULL;
+
+    encoderWidth = 720;
+    encoderHeight = 1280;
+    encoderBitrate = 512000;
+    encoderFps = 25;
+
+    in_fmt1 = NULL;
+    in_fmt2 = NULL;
+    ou_fmt = NULL;
+    video1_in_index = -1;
+    audio1_in_index = -1;
+    video2_in_index = -1;
+    audio2_in_index = -1;
+    video_ou_index = -1;
+    audio_ou_index = -1;
+    next_video_pts = 0;
+    next_audio_pts = 0;
+
+    curIndex = {0, -1, -1};
+    preIndex = {0, -1, -1};
+    ou_fmt = NULL;
+    video_de_frame = NULL;
+    audio_de_frame = NULL;
+    video_en_frame = NULL;
+    yuv_frame = NULL;
+    audio_en_frame = NULL;
+    swsctx = NULL;
+    swrctx = NULL;
+    srcPaths = vector<string>();
+    imgTmpPaths = vector<string>();
+    in_fmts = vector<AVFormatContext *>();
+    de_ctxs = vector<DeCtx>();
+    in_indexes = vector<MediaIndex>();
+    video_en_ctx = NULL;
+    audio_en_ctx = NULL;
+    audio_buffer = NULL;
 }
 
 void Merge::releaseSources() {

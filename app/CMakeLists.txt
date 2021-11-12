@@ -15,6 +15,7 @@ project("fve")
 # Gradle automatically packages shared libraries with your APK.
 
 set(FFMPEG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/main/cpp/3rdparty/libFFmpeg)
+SET(FAAC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/main/cpp/3rdparty/libfaac)
 set(LIBYUV_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/main/cpp/3rdparty/libyuv)
 set(CPPDIR ${CMAKE_CURRENT_SOURCE_DIR}/src/main/cpp)
 
@@ -23,6 +24,11 @@ include_directories(${FFMPEG_DIR}/${ANDROID_ABI}/include)
 link_directories(${FFMPEG_DIR}/${ANDROID_ABI}/lib)
 set(FFMPEG_LIB avformat avcodec avfilter avutil swresample swscale fdk-aac x264 z c m dl)
 #SET(FFMPEG_LIB avformat avcodec avdevice avfilter avutil swresample swscale fdk-aac x264 z c m dl)
+
+#faac
+INCLUDE_DIRECTORIES(${FAAC_DIR}/${ANDROID_ABI}/include)
+LINK_DIRECTORIES(${FAAC_DIR}/${ANDROID_ABI}/lib)
+SET(FAAC_LIB faac)
 
 #libyuv
 include_directories(${LIBYUV_DIR}/${ANDROID_ABI}/include)
@@ -35,7 +41,9 @@ set(LIB_SRC ${CPPDIR}/native-lib.cpp
         ${CPPDIR}/JpgVideo.cpp
         ${CPPDIR}/Merge.cpp
         ${CPPDIR}/FilterVideoScale.cpp
-        ${CPPDIR}/YuvUtils.cpp)
+        ${CPPDIR}/YuvUtils.cpp
+        ${CPPDIR}/LCVideoWriter.cpp
+        ${CPPDIR}/LCMediaInfo.cpp)
 
 add_library( # Sets the name of the library.
         fve
@@ -50,5 +58,6 @@ add_library( # Sets the name of the library.
 target_link_libraries(fve
         ${ANDROID_SYSLIBS}
         ${FFMPEG_LIB}
+        ${FAAC_LIB}
         ${LIBYUV_LIB}
         )
