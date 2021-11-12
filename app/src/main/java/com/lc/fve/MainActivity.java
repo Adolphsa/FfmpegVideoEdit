@@ -16,6 +16,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
 import android.util.Printer;
+import android.util.Size;
 import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -25,6 +26,7 @@ import com.lc.fve.databinding.ActivityMainBinding;
 import com.lc.fve.utils.AssetUtils;
 import com.lc.fve.utils.BitmapUtils;
 import com.lc.fve.utils.GlideEngine;
+import com.lc.fve.utils.StringUtils;
 import com.luck.picture.lib.PictureSelector;
 import com.luck.picture.lib.config.PictureConfig;
 import com.luck.picture.lib.config.PictureMimeType;
@@ -58,6 +60,7 @@ public class MainActivity extends AppCompatActivity {
     File addMusicFile;
     File scaleResultFile;
     File noAudioResultFile;
+    File blackBorderFile;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -83,6 +86,7 @@ public class MainActivity extends AppCompatActivity {
         scaleResultFile = new File(resourceVideoDir, "result_scale.mp4");
         noAudioResultFile = new File(resourceVideoDir, "no_audio.mp4");
         txtFile = new File(resourceVideoDir, "file_path.txt");
+        blackBorderFile = new File(resourceImageDir, "black_border_img.jpeg");
 
         selectMediaList = new ArrayList<>();
         FFmpegNative fmpegNative = new FFmpegNative();
@@ -237,6 +241,18 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }).start();
 
+            }
+        });
+
+        binding.addBlackBorder.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                String imgPath = selectMediaList.get(0);
+                Size imageSize = StringUtils.getImageSize(imgPath);
+                int width = imageSize.getWidth();
+                int height = imageSize.getHeight();
+                Log.d(TAG, "onClick: width = " + width + ",height = " + height);
+                FFmpegCmd.getInstance().addBlackBorder(imgPath, blackBorderFile.getAbsolutePath(), width, height, 720, 1280);
             }
         });
 

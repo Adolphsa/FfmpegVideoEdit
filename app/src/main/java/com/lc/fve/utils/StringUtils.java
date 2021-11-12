@@ -1,6 +1,7 @@
 package com.lc.fve.utils;
 
 import android.util.Log;
+import android.util.Size;
 
 import androidx.exifinterface.media.ExifInterface;
 
@@ -87,5 +88,21 @@ public class StringUtils {
         }
 
         return rotateParam;
+    }
+
+    public static Size getImageSize(String srcPath) {
+        int width = 0;
+        int height = 0;
+        ExifInterface exifInterface = null;
+
+        try {
+            exifInterface = new ExifInterface(srcPath);
+            width = exifInterface.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, 0);
+            height = exifInterface.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, 0);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return new Size(width, height);
     }
 }

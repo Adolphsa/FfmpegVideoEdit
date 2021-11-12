@@ -184,6 +184,37 @@ public class FFmpegCmd {
     }
 
     /**
+     * 当图片分辨率小于目标分辨率时   为图片添加黑边
+     * @param srcPath 源路径
+     * @param dstPath 目标路径
+     * ffmpeg -i text_640x480.jpg -vf pad=a:b:c:d:black hahaa.jpg
+     * 其中a、b、c、d分别代表的参数是a为输出的宽度，b为输出的高度，c为需要左移的距离，d为序要下移的距离（单位默认为pixel）
+     * @return
+     */
+    public int addBlackBorder(String srcPath, String dstPath, int srcW, int srcH, int dstW, int dstH) {
+        //ffmpeg -i text_640x480.jpg -vf pad=720:1280:(720-640)/2:(1280-480)/2:black hahaa.jpg
+        StringBuilder cmdString = new StringBuilder();
+        cmdString.append("-i");
+        cmdString.append(" ");
+        cmdString.append(srcPath);
+        cmdString.append(" -vf");
+        cmdString.append(" pad=");
+        cmdString.append(dstW);
+        cmdString.append(":");
+        cmdString.append(dstH);
+        cmdString.append(":");
+        cmdString.append((dstW-srcW)/2);
+        cmdString.append(":");
+        cmdString.append((dstH-srcH)/2);
+        cmdString.append(":");
+        cmdString.append("black");
+        cmdString.append(" ");
+        cmdString.append(dstPath);
+        Log.d(TAG, "addBlackBorder: " + cmdString.toString());
+        return FFmpeg.execute(cmdString.toString());
+    }
+
+    /**
      * 音频视频合成
      * @param videoPath 视频路径
      * @param audioPath 音频路径

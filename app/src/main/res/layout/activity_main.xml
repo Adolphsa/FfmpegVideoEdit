@@ -90,6 +90,15 @@
         />
 
     <Button
+        android:id="@+id/addBlackBorder"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="增加黑边"
+        app:layout_constraintTop_toBottomOf="@+id/getVideoInfo"
+        app:layout_constraintLeft_toLeftOf="@+id/getVideoInfo"
+        />
+
+    <Button
         android:id="@+id/startSelectMedia"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
