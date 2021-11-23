@@ -33,6 +33,8 @@ public:
     int GetRotateAngle();
     int GetVideoFps();
 
+    float    GetMediaTotalSeconds();
+
 private:
     void resetAllMediaPlayerParameters();
 

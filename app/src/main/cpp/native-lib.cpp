@@ -161,3 +161,9 @@ JNIEXPORT jint JNICALL
 Java_com_lc_fve_FFmpegNative_getVideoRotateAngle(JNIEnv *env, jobject thiz) {
     return m_lcMediaInfo.GetRotateAngle();
 }
+extern "C"
+JNIEXPORT jfloat JNICALL
+Java_com_lc_fve_FFmpegNative_getVideoTotalSeconds(JNIEnv *env, jobject thiz) {
+    jfloat  totalSeconds = m_lcMediaInfo.GetMediaTotalSeconds();
+    return totalSeconds;
+}

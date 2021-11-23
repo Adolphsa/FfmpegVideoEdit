@@ -184,6 +184,13 @@ int LCMediaInfo::GetVideoFps()
     return m_videoFPS;
 }
 
+float LCMediaInfo::GetMediaTotalSeconds()
+{
+    if (m_pFormatCtx == nullptr) return 0.0f;
+    float totalDuration = m_pFormatCtx->duration/(AV_TIME_BASE*1.000);
+    return totalDuration;
+}
+
 void LCMediaInfo::resetAllMediaPlayerParameters()
 {
     m_pFormatCtx       = NULL;

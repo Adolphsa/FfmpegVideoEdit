@@ -20,6 +20,7 @@ public class FFmpegNative {
     private native int getVideoWidth();
     private native int getVideoHeight();
     private native int getVideoRotateAngle();
+    private native float getVideoTotalSeconds();
 
     /**
      * 合并图片
@@ -87,5 +88,9 @@ public class FFmpegNative {
 
     public int getVideoRotateFormNdk() {
         return getVideoRotateAngle();
+    }
+
+    public int getVideoDurationFormNdk() {
+        return (int)getVideoTotalSeconds();
     }
 }

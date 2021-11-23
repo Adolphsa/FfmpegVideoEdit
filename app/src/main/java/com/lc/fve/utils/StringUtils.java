@@ -1,5 +1,6 @@
 package com.lc.fve.utils;
 
+import android.media.MediaMetadataRetriever;
 import android.util.Log;
 import android.util.Size;
 
@@ -104,5 +105,44 @@ public class StringUtils {
         }
 
         return new Size(width, height);
+    }
+
+    /**
+     * get Local video and audio duration
+     *
+     * @return
+     */
+    public static int getLocalVideoDuration(String videoPath) {
+        //时长(毫秒)
+        int duration;
+        try {
+            MediaMetadataRetriever mmr = new  MediaMetadataRetriever();
+            mmr.setDataSource(videoPath);
+            duration = Integer.parseInt(mmr.extractMetadata
+                    (MediaMetadataRetriever.METADATA_KEY_DURATION))/1000;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return 0;
+        }
+        return duration;
+    }
+
+    /**
+     * get Local video rotate
+     *
+     * @return
+     */
+    public static int getLocalVideoRotate(String videoPath) {
+        //角度
+        int rotate;
+        try {
+            MediaMetadataRetriever mmr = new  MediaMetadataRetriever();
+            mmr.setDataSource(videoPath);
+            rotate = Integer.parseInt(mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return 0;
+        }
+        return rotate;
     }
 }

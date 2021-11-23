@@ -1,5 +1,6 @@
 package com.lc.fve;
 
+import android.text.TextUtils;
 import android.util.Log;
 
 import com.arthenica.mobileffmpeg.FFmpeg;
@@ -41,12 +42,15 @@ public class FFmpegCmd {
     public int scaleRotateJpg(String srcPath, String dstPath, int rotate) {
         //ffmpeg -i lc.jpg -vf scale=720:1280 -vf transpose=2 lc3.jpg
         StringBuilder cmdString = new StringBuilder();
-        cmdString.append("-i");
+        cmdString.append("-y");
+        cmdString.append(" -i");
         cmdString.append(" ");
         cmdString.append(srcPath);
         cmdString.append(" -vf scale=720:1280");
-        cmdString.append(" -vf transpose=");
-        cmdString.append(rotate);
+        if (rotate != -1) {
+            cmdString.append(" -vf transpose=");
+            cmdString.append(rotate);
+        }
         cmdString.append(" ");
         cmdString.append(dstPath);
         Log.d(TAG, "scaleRotateJpg: " + cmdString.toString());
@@ -121,6 +125,33 @@ public class FFmpegCmd {
     }
 
     /**
+     * 压缩视频
+     * @param srcPath 源路径
+     * @param dstPath 目标路径
+     * @param bitRate 比特率  默认2M
+     * @return
+     */
+    public int compressVideo(String srcPath, String dstPath, String bitRate) {
+        //ffmpeg -y -i phone.mp4 -b:v 2M -acodec aac -vcodec libx264 -pix_fmt yuv420p out_phone.mp4
+        if (TextUtils.isEmpty(bitRate)) {
+            bitRate = "2M";
+        }
+        StringBuilder cmdString = new StringBuilder();
+        cmdString.append("-y");
+        cmdString.append(" -i");
+        cmdString.append(" ");
+        cmdString.append(srcPath);
+        cmdString.append(" -b:v").append(" ").append(bitRate);
+        cmdString.append(" -acodec aac");
+        cmdString.append(" -vcodec libx264");
+        cmdString.append(" -pix_fmt yuv420p");
+        cmdString.append(" ");
+        cmdString.append(dstPath);
+        Log.d(TAG, "compressVideo: " + cmdString.toString());
+        return FFmpeg.execute(cmdString.toString());
+    }
+
+    /**
      * 合并文件
      * @param pathList 待合并的路径
      * @param txtPath 路径文本
@@ -131,15 +162,12 @@ public class FFmpegCmd {
         //ffmpeg -i out2.mp4 -i out4.mp4 -filter_complex "[0:0] [0:1] [1:0] [1:1] concat=n=2:v=1:a=1 [v] [a]" -map "[v]" -map "[a]" out_merge.mp4
         //ffmpeg -f concat -i aa.txt -c copy out_merge2.mp4
 
-        //如果目标文件存在就删掉
-        File dstFile = new File(dstPath);
-        if (dstFile.exists()) dstFile.delete();
-
         //首先预处理图片和视频  生成路径txt文件
         List<String> prePathList = preHandleFile(pathList, txtPath);
 
         StringBuilder cmdString = new StringBuilder();
-        cmdString.append("-f");
+        cmdString.append("-y");
+        cmdString.append(" -f");
         cmdString.append(" concat");
         cmdString.append(" -safe 0");
         cmdString.append(" -i");
@@ -169,14 +197,26 @@ public class FFmpegCmd {
      * @return
      */
     public int cutVideo(String srcPath, String dstPath) {
-        //ffmpeg -i input.mp4 -ss 00:00:00 -codec copy -t 30 output.mp4
+        //1.ffmpeg -i input.mp4 -ss 00:00:00 -codec copy -t 30 output.mp4
+        //2.ffmpeg -ss 0 -t 30  -accurate_seek -i source.mp4 -codec copy -avoid_negative_ts 1 out3.mp4
+        //第一个命令会出现画面在一开始会卡住(但声音一直是正常的)，几秒后画面才正常滚动
+        //原因是因为剪辑的开始时间落在视频GOP的中间位置而不是第一个I帧
+
+        int duration = StringUtils.getLocalVideoDuration(srcPath);
+        Log.d(TAG, "duration: " + duration);
+
         StringBuilder cmdString = new StringBuilder();
-        cmdString.append("-i");
+        cmdString.append("-y");
+        if (duration > 30) {
+            cmdString.append(" -ss 0");
+            cmdString.append(" -t 30");
+            cmdString.append(" -accurate_seek");
+            cmdString.append(" -avoid_negative_ts 1");
+        }
+        cmdString.append(" -i");
         cmdString.append(" ");
         cmdString.append(srcPath);
-        cmdString.append(" -ss 00:00:00");
         cmdString.append(" -codec copy");
-        cmdString.append(" -t 30");
         cmdString.append(" ");
         cmdString.append(dstPath);
         Log.d(TAG, "cutVideo: " + cmdString.toString());
@@ -305,26 +345,23 @@ public class FFmpegCmd {
                 int rotateParam = StringUtils.getFfmpegRotateParam(imageDegree);
                 //3.生成一个缩放旋转后的图片地址
                 String jpgPrePath = StringUtils.getJpgPrePath(tempPath);
-                File file1 = new File(jpgPrePath);
-                if (file1.exists()) file1.delete();
                 scaleRotateJpg(tempPath, jpgPrePath, rotateParam);
                 //4.生成一个临时图片转视频的地址
                 String jpgConvertResultPath = StringUtils.getJpgConvertResultPath(tempPath);
-                File file2 = new File(jpgConvertResultPath);
-                if (file2.exists()) file2.delete();
                 jpgToVideo(jpgPrePath, jpgConvertResultPath, -1);
                 //5.将处理好的路径放入list中
                 handledPathList.add(jpgConvertResultPath);
                 //6.删除临时缩放的文件
-                File file3 = new File(jpgPrePath);
-                if (file3.exists()) file3.delete();
+//                File file3 = new File(jpgPrePath);
+//                if (file3.exists()) file3.delete();
             } else if (StringUtils.isMp4(tempPath)) {
                 //是MP4视频  先进行旋转 缩放处理
                 //获取视频角度  长宽信息进行重新编码
                 //1.ffmpeg打开文件
                 ffmpegNative.startVideoPlayerWithPath(tempPath);
-                //2.获取视频旋转角度
+                //2.获取视频旋转角度 时长
                 int videoRotate = ffmpegNative.getVideoRotateFormNdk();
+                int videoDuration = (int)ffmpegNative.getVideoDurationFormNdk();
                 Log.d(TAG, "mergeFile: videoRotate = " + videoRotate);
                 //3.生成ffmpeg旋转参数
                 int rotateParam = StringUtils.getFfmpegRotateParam(videoRotate);

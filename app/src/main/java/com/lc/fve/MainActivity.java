@@ -113,7 +113,7 @@ public class MainActivity extends AppCompatActivity {
                         long startTime = System.currentTimeMillis();
                         FFmpegCmd.getInstance().jpgToVideo(srcPath, resultVideo.getAbsolutePath(), -1);
                         long endTime = System.currentTimeMillis();
-                        Log.d(TAG, "run: 耗时 = " + (endTime-startTime)/1000);
+                        Log.d(TAG, "run: 耗时 = " + (endTime - startTime) / 1000);
                     }
                 }).start();
             }
@@ -132,7 +132,7 @@ public class MainActivity extends AppCompatActivity {
 
                         PermissionX.init(MainActivity.this)
                                 .permissions(Manifest.permission.READ_EXTERNAL_STORAGE,
-                                            Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                        Manifest.permission.WRITE_EXTERNAL_STORAGE)
                                 .request(new RequestCallback() {
                                     @Override
                                     public void onResult(boolean allGranted, @NonNull List<String> grantedList, @NonNull List<String> deniedList) {
@@ -142,12 +142,25 @@ public class MainActivity extends AppCompatActivity {
 //                                            String src1 = resourceVideoDir + File.separator + "test_1280x720_4.mp4";
 //                                            String src2 = resourceVideoDir + File.separator + "VID_20211101_174852.mp4";
 //                                            String[] tmpStrArr = {src1, src2};
-                                            if (mergeVideo.exists()) {
-                                                mergeVideo.delete();
-                                            }
-                                            fmpegNative.mergeFiles(stringArr, mergeVideo.getAbsolutePath());
-                                            Log.d(TAG, "onResult: " + fmpegNative.getMergeStatus());
-                                        } else  {
+//                                            if (mergeVideo.exists()) {
+//                                                mergeVideo.delete();
+//                                            }
+//                                            fmpegNative.mergeFiles(stringArr, mergeVideo.getAbsolutePath());
+//                                            Log.d(TAG, "onResult: " + fmpegNative.getMergeStatus());
+
+                                            long startTime = System.currentTimeMillis();
+//                                            FFmpegCmd.getInstance().mergeFiles(selectMediaList, txtFile.getAbsolutePath(), mergeVideo.getAbsolutePath());
+//                                            fmpegNative.startVideoPlayerWithPath(selectMediaList.get(0));
+//                                            int duration = fmpegNative.getVideoDurationFormNdk();
+//                                            FFmpegCmd.getInstance().cutVideo(selectMediaList.get(0), mergeVideo.getAbsolutePath(), duration);
+                                            FFmpegCmd.getInstance().mergeFiles(
+                                                    selectMediaList,
+                                                    txtFile.getAbsolutePath(),
+                                                    mergeVideo.getAbsolutePath());
+                                            long endTime = System.currentTimeMillis();
+                                            Log.d(TAG, "run: 合并耗时 = " + (endTime - startTime) / 1000.0);
+
+                                        } else {
                                             Log.d(TAG, "onResult: 没有权限");
                                         }
                                     }
@@ -215,11 +228,12 @@ public class MainActivity extends AppCompatActivity {
         binding.videoSplicing.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                String leftVideo = resourceVideoDir + File.separator + "2.mp4";
-                String rightVideo = resourceVideoDir + File.separator + "1.mp4";
+                String leftVideo = resourceVideoDir + File.separator + "l1.mov";
+                String rightVideo = resourceVideoDir + File.separator + "l2.mov";
                 String resultVideo = resourceVideoDir + File.separator + "3.mp4";
                 //ffmpeg -i 1.mp4 -i 2.mp4 -filter_complex hstack -preset fast 3.mp4
-                FFmpegCmd.getInstance().horizontalSplicingVideo(leftVideo, rightVideo, resultVideo);
+                int ret = FFmpegCmd.getInstance().horizontalSplicingVideo(leftVideo, rightVideo, resultVideo);
+                Log.d(TAG, "onClick: ret = " + ret);
             }
         });
 
@@ -230,14 +244,13 @@ public class MainActivity extends AppCompatActivity {
 //                int videoWidth = fmpegNative.getVideoWidthFormNdk();
 //                int videoHeight = fmpegNative.getVideoHeightFormNdk();
 //                int videoRotate = fmpegNative.getVideoRotateFormNdk();
+//                int totalSeconds = (int) fmpegNative.getVideoDurationFormNdk();
 //                Log.d(TAG, "onClick: width = " + videoWidth + ", height = " + videoHeight + ", rotate = " + videoRotate);
+//                Log.d(TAG, "onClick: duration = " + totalSeconds);
                 new Thread(new Runnable() {
                     @Override
                     public void run() {
-                        long startTime = System.currentTimeMillis();
-                        FFmpegCmd.getInstance().mergeFiles(selectMediaList, txtFile.getAbsolutePath(), mergeVideo.getAbsolutePath());
-                        long endTime = System.currentTimeMillis();
-                        Log.d(TAG, "run: 合并耗时 = " + (endTime-startTime)/1000.0);
+                        FFmpegCmd.getInstance().compressVideo(selectMediaList.get(0), scaleResultFile.getAbsolutePath(), "1M");
                     }
                 }).start();
 
@@ -343,6 +356,7 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * 创建一个ActivityResultLauncher
+     *
      * @return
      */
     private ActivityResultLauncher<Intent> createActivityResultLauncher() {
