@@ -243,4 +243,6 @@ ffmpeg -i left.mp4 -i right.mp4 -filter_complex hstack -preset veryfast output.m
 
 ## License
 
-No license file is currently included in this repository. Add a license before using this code in production or redistributing it.
+This project is licensed under the MIT License.
+
+You are free to use, modify, and distribute this project under the terms of the MIT License. See the LICENSE file for details.
